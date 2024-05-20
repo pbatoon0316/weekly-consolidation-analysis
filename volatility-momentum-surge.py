@@ -1,11 +1,8 @@
 import pandas as pd
 import yfinance as yf
-import mplfinance as mpf
 import warnings
 import streamlit as st
 import streamlit.components.v1 as components
-
-
 
 
 ######################
@@ -64,26 +61,6 @@ def scanner(data,threshold=2):
     breakouts = breakouts.sort_values('volume_average', ascending=False)
 
     return breakouts
-
-def plot_ticker(ticker):
-    df = data.loc[:, (slice(None), ticker)].copy()
-    df.columns = df.columns.droplevel(1)
-
-    # Create the plot
-    fig, axes = mpf.plot(df, type='candle', volume=True, ylabel='Price', volume_panel=1, style='yahoo', returnfig=True, panel_ratios=(2,1), figsize=(8, 5), tight_layout=True)
-
-    # Add watermark as text annotation
-    watermark_text = ticker
-    company_name = metadata[metadata['Symbol']==ticker]['Name'].item()
-    company_sector = metadata[metadata['Symbol']==ticker]['Sector'].item()
-    avg_vol = breakouts[breakouts['ticker']==ticker]['volume_average'].item()
-    
-    watermark_position = (0.3, 0.65)  # Adjust the position as per your preference
-    fig.text(watermark_position[0], watermark_position[1], watermark_text, fontsize=80, color='black', alpha=0.1)
-
-    st.markdown(f'''{round(avg_vol,2)}M - {ticker} - {company_sector} [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})''')
-
-    return fig
 
 def plot_ticker_html(ticker):
 
