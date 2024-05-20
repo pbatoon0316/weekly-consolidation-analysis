@@ -6,6 +6,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 
+
+
 ######################
 # Set the display option to show 2 decimal places
 pd.set_option('display.float_format', '{:.2f}'.format)
@@ -124,6 +126,7 @@ def plot_ticker_html(ticker):
 ######################
 
 left_datacontainer, right_resultcontainer = st.columns([1,2])
+
 
 ##### Data download & Calculations #####
 
