@@ -3,7 +3,7 @@ import yfinance as yf
 import mplfinance as mpf
 import warnings
 import streamlit as st
-
+import streamlit.components.v1 as components
 
 
 ######################
@@ -50,7 +50,7 @@ def scanner(data,threshold=2):
         df['volume_average'] = df['Volume(M)'].mean()
         df['volume_zscore'] = (df['Volume(M)'] - df['Volume(M)'].shift(1).mean()) / df['Volume(M)'].shift(1).std()
 
-        df = df[['ticker','%change_zscore','volume_zscore','%change','volume_average','Volume(M)','Open','High','Low','Close']]
+        df = df[['ticker','%change_zscore','volume_zscore','volume_average','Volume(M)']]
 
         threshold = threshold
 
@@ -83,10 +83,47 @@ def plot_ticker(ticker):
 
     return fig
 
+def plot_ticker_html(ticker):
+
+    df = data.loc[:, (slice(None), ticker)].copy()
+    df.columns = df.columns.droplevel(1)
+
+    company_name = metadata[metadata['Symbol']==ticker]['Name'].item()
+    company_sector = metadata[metadata['Symbol']==ticker]['Sector'].item()
+    avg_vol = breakouts[breakouts['ticker']==ticker]['volume_average'].item()
+
+    st.markdown(f'''{round(avg_vol,2)}M - {ticker} - {company_sector} [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})''')
+    
+    fig_html =f'''
+    <!-- TradingView Widget BEGIN -->
+    <div class="tradingview-widget-container">
+        <div class="tradingview-widget-container__widget"></div>
+        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+        {{
+        "height": "290",
+        "symbol": "{ticker}",
+        "interval": "D",
+        "timezone": "Etc/UTC",
+        "theme": "light",
+        "style": "1",
+        "locale": "en",
+        "backgroundColor": "rgba(255, 255, 255, 1)",
+        "gridColor": "rgba(0, 0, 0, 0.06)",
+        "hide_top_toolbar": true,
+        "allow_symbol_change": false,
+        "save_image": false,
+        "calendar": false,
+        "support_host": "https://www.tradingview.com"
+        }}
+        </script>
+    </div>
+    <!-- TradingView Widget END -->
+    '''
+    return fig_html
+
 ######################
 
 left_datacontainer, right_resultcontainer = st.columns([1,2])
-
 
 ##### Data download & Calculations #####
 
@@ -139,11 +176,11 @@ with right_resultcontainer:
     for ticker in breakouts.ticker.unique():
         if i % 2 == 0:
             with left_resultsplot:
-                fig = plot_ticker(ticker)
-                st.pyplot(fig, clear_figure=True)
+                fig = plot_ticker_html(ticker)
+                components.html(fig, height=300)
                 i += 1
         else:
             with right_resultsplot:
-                fig = plot_ticker(ticker)
-                st.pyplot(fig, clear_figure=True)
+                fig = plot_ticker_html(ticker)
+                components.html(fig, height=300)
                 i += 1
