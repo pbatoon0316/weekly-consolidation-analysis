@@ -118,9 +118,11 @@ with left_datacontainer:
         st.dataframe(data)
 
     ##### User Input for Z score threshold and Lookback period #####
-    threshcol, lookbackcol =  st.columns([1,1])
+    threshcol, volavgcol, lookbackcol =  st.columns([1,1,1])
     with threshcol:
         threshold = st.number_input('Z-Score (default=2)', value=2.0)
+    with volavgcol:
+        volavg = st.number_input('Volume Average', value=0.5)
     with lookbackcol:
         lookback = st.number_input('Lookback (default=0)', value=0, min_value=0, max_value=50)
         lookback = lookback*-1
@@ -142,7 +144,7 @@ with left_datacontainer:
     breakouts = breakouts.reset_index()
     breakouts = breakouts.sort_values(by=['Date','volume_average'], ascending=False)
     breakouts = breakouts.set_index('Date')
-    st.dataframe(breakouts, hide_index=False)
+    st.dataframe(breakouts[breakouts['volume_average']>volavg], hide_index=False)
 
 
 
@@ -156,11 +158,17 @@ with right_resultcontainer:
     for ticker in breakouts.ticker.unique():
         if i % 2 == 0:
             with left_resultsplot:
-                fig = plot_ticker_html(ticker)
-                components.html(fig, height=300)
+                try:
+                    fig = plot_ticker_html(ticker)
+                    components.html(fig, height=300)
+                except:
+                    st.text(f'{ticker} not plotted.')
                 i += 1
         else:
             with right_resultsplot:
-                fig = plot_ticker_html(ticker)
-                components.html(fig, height=300)
+                try:
+                    fig = plot_ticker_html(ticker)
+                    components.html(fig, height=300)
+                except:
+                    st.text(f'{ticker} not plotted.')
                 i += 1
