@@ -154,7 +154,8 @@ with left_datacontainer:
     breakouts = breakouts.reset_index()
     breakouts = breakouts.sort_values(by=['Date','volume_average'], ascending=False)
     breakouts = breakouts.set_index('Date')
-    st.dataframe(breakouts[breakouts['volume_average']>volavg], hide_index=False)
+    filtered_breakouts = breakouts[breakouts['volume_average']>volavg]
+    st.dataframe(filtered_breakouts, hide_index=False)
 
 
 
@@ -165,7 +166,7 @@ with right_resultcontainer:
     left_resultsplot, right_resultsplot = st.columns([1,1])
 
     i = 0
-    for ticker in breakouts.ticker.unique():
+    for ticker in filtered_breakouts.ticker.unique():
         if i % 2 == 0:
             with left_resultsplot:
                 try:
