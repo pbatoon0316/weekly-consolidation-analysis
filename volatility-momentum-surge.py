@@ -128,17 +128,27 @@ with left_datacontainer:
         lookback = lookback*-1
 
     if lookback == 0:
-        breakouts = scanner(data,threshold)
+        try:
+            breakouts = scanner(data,threshold)
+        except:
+            st.text(f'No breakouts found for lookback={lookback}')
 
     ##### Special condition if a lookback period is added. Loop through lookback += 1 with combined list #####
     else:
         breakouts = pd.DataFrame()
         while lookback < 0:
-            breakouts_temp = scanner(data[:lookback],threshold)
-            breakouts = pd.concat([breakouts, breakouts_temp])
+            try:
+                breakouts_temp = scanner(data[:lookback],threshold)
+                breakouts = pd.concat([breakouts, breakouts_temp])
+            except:
+                st.text(f'No breakouts found for lookback={lookback}')
             lookback += 1
-        breakouts_temp = scanner(data,threshold)
-        breakouts = pd.concat([breakouts, breakouts_temp])
+
+        try:
+            breakouts_temp = scanner(data,threshold)
+            breakouts = pd.concat([breakouts, breakouts_temp])
+        except:
+            st.text(f'No breakouts found for lookback={lookback}')
 
     st.markdown('Breakouts')
     breakouts = breakouts.reset_index()
