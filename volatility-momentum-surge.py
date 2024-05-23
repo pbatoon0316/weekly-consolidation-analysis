@@ -162,7 +162,7 @@ with right_resultcontainer:
                     fig = plot_ticker_html(ticker)
                     components.html(fig, height=300)
                 except:
-                    st.text(f'{ticker} not plotted.')
+                    st.markdown(f'{ticker} not plotted.')
                 i += 1
         else:
             with right_resultsplot:
@@ -170,5 +170,5 @@ with right_resultcontainer:
                     fig = plot_ticker_html(ticker)
                     components.html(fig, height=300)
                 except:
-                    st.text(f'{ticker} not plotted.')
+                    st.markdown(f'{ticker} not plotted.')
                 i += 1
