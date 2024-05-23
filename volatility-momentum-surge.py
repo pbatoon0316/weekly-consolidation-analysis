@@ -162,7 +162,7 @@ with right_resultcontainer:
                     fig = plot_ticker_html(ticker)
                     components.html(fig, height=300)
                 except:
-                    st.markdown(f'{ticker} - {company_sector} [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker}')
+                    st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker}')
                 i += 1
         else:
             with right_resultsplot:
@@ -170,5 +170,5 @@ with right_resultcontainer:
                     fig = plot_ticker_html(ticker)
                     components.html(fig, height=300)
                 except:
-                    st.markdown(f'{ticker} - {company_sector} [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker}')
+                    st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker}')
                 i += 1
