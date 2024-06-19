@@ -109,12 +109,15 @@ left_datacontainer, right_resultcontainer = st.columns([1,2])
 
 with left_datacontainer:
     with st.expander('Metadata'):
-        metadata = download_metadata()
+        st.session_state.metadata = download_metadata()
+        metadata = st.session_state.metadata
+
         st.text(f'{len(metadata)} tickers inputted')
         st.dataframe(metadata, hide_index=True)
 
     with st.expander('Data (initial download takes roughly 5 minutes)'):
-        data = download_data()
+        st.session_state.data = download_data()
+        data = st.session_state.data
         st.dataframe(data)
 
     ##### User Input for Z score threshold and Lookback period #####
@@ -128,34 +131,23 @@ with left_datacontainer:
         lookback = lookback*-1
 
     if lookback == 0:
-        try:
-            breakouts = scanner(data,threshold)
-        except:
-            st.text(f'No breakouts found for lookback={lookback}')
+        breakouts = scanner(data,threshold)
 
     ##### Special condition if a lookback period is added. Loop through lookback += 1 with combined list #####
     else:
         breakouts = pd.DataFrame()
         while lookback < 0:
-            try:
-                breakouts_temp = scanner(data[:lookback],threshold)
-                breakouts = pd.concat([breakouts, breakouts_temp])
-            except:
-                st.text(f'No breakouts found for lookback={lookback}')
-            lookback += 1
-
-        try:
-            breakouts_temp = scanner(data,threshold)
+            breakouts_temp = scanner(data[:lookback],threshold)
             breakouts = pd.concat([breakouts, breakouts_temp])
-        except:
-            st.text(f'No breakouts found for lookback={lookback}')
+            lookback += 1
+        breakouts_temp = scanner(data,threshold)
+        breakouts = pd.concat([breakouts, breakouts_temp])
 
     st.markdown('Breakouts')
     breakouts = breakouts.reset_index()
     breakouts = breakouts.sort_values(by=['Date','volume_average'], ascending=False)
     breakouts = breakouts.set_index('Date')
-    filtered_breakouts = breakouts[breakouts['volume_average']>volavg]
-    st.dataframe(filtered_breakouts, hide_index=False)
+    st.dataframe(breakouts[breakouts['volume_average']>volavg], hide_index=False)
 
 
 
@@ -166,14 +158,14 @@ with right_resultcontainer:
     left_resultsplot, right_resultsplot = st.columns([1,1])
 
     i = 0
-    for ticker in filtered_breakouts.ticker.unique():
+    for ticker in breakouts.ticker.unique():
         if i % 2 == 0:
             with left_resultsplot:
                 try:
                     fig = plot_ticker_html(ticker)
                     components.html(fig, height=300)
                 except:
-                    st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
+                    st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker}')
                 i += 1
         else:
             with right_resultsplot:
@@ -181,5 +173,5 @@ with right_resultcontainer:
                     fig = plot_ticker_html(ticker)
                     components.html(fig, height=300)
                 except:
-                    st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
+                    st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker}')
                 i += 1
