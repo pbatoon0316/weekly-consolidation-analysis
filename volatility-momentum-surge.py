@@ -25,7 +25,7 @@ def download_data():
     url = 'metadata.csv'
     stocks = pd.read_csv(url)
     tickers = stocks['Symbol'].tolist()
-    data = yf.download(tickers, period='90d', auto_adjust=True, progress=True)
+    data = yf.download(tickers, period='3mo', interval='1d', auto_adjust=True, progress=True)
     return data
 
 @st.cache_data(ttl='1hr')
@@ -147,7 +147,8 @@ with left_datacontainer:
     breakouts = breakouts.reset_index()
     breakouts = breakouts.sort_values(by=['Date','volume_average'], ascending=False)
     breakouts = breakouts.set_index('Date')
-    st.dataframe(breakouts[breakouts['volume_average']>volavg], hide_index=False)
+    breakouts = breakouts[breakouts['volume_average']>volavg]
+    st.dataframe(breakouts, hide_index=False)
 
 
 
