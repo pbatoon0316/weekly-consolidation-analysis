@@ -17,7 +17,7 @@ st.set_page_config(page_title='Weekly Consolidation Analysis',
 
 @st.cache_data(ttl='1d')
 def download_metadata():
-    url = 'metadata_squeeze.csv'
+    url = 'metadata.csv'
     metadata = pd.read_csv(url)
     return metadata
 
