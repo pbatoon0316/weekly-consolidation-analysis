@@ -21,7 +21,7 @@ def download_metadata():
     metadata = pd.read_csv(url)
     return metadata
 
-@st.cache_data(ttl='1d')
+@st.cache_data(ttl='12hr')
 def download_data_wk():
     url = 'metadata.csv'
     stocks = pd.read_csv(url)
@@ -29,7 +29,7 @@ def download_data_wk():
     data = yf.download(tickers, period='6mo', interval='1wk', auto_adjust=True, progress=True)
     return data
 
-@st.cache_data(ttl='1d')
+@st.cache_data(ttl='12hr')
 def scanner_wk(data):
     tickers = list(data.columns.get_level_values(1).unique())
     squeezes = pd.DataFrame()
@@ -69,12 +69,12 @@ def scanner_wk(data):
 
     return squeezes
 
-@st.cache_data(ttl='1d')
+@st.cache_data(ttl='1hr')
 def download_data_day(tickers):
     data = yf.download(tickers, period='3mo', interval='1d', auto_adjust=True, progress=True)
     return data
 
-@st.cache_data(ttl='1d')
+@st.cache_data(ttl='1hr')
 def scanner_day(data):
     tickers = list(data.columns.get_level_values(1).unique())
     squeezes = pd.DataFrame()
