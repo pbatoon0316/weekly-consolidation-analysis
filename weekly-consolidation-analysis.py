@@ -1,10 +1,10 @@
+###############
 import pandas as pd
 import yfinance as yf
 from finta import TA
 import warnings
 import streamlit as st
 import streamlit.components.v1 as components
-
 
 ######################
 # Set the display option to show 2 decimal places
@@ -35,32 +35,30 @@ def scanner_wk(data):
     squeezes = pd.DataFrame()
 
     for ticker in tickers:
-
         df = data.loc[:, (slice(None), ticker)].copy()
         df.columns = df.columns.droplevel(1)
         df.columns = df.columns.str.lower()
         df['ticker'] = ticker
 
-        #Volume
+        # Volume
         df['volume_average'] = df['volume'].mean()
         df['volume_zscore'] = (df['volume'] - df['volume'].shift(1).mean()) / df['volume'].shift(1).std()
-        #KC
-        KC = TA.KC(df, period=20,atr_period=20, kc_mult=1.5)
-        #BB
+        # KC
+        KC = TA.KC(df, period=20, atr_period=20, kc_mult=1.5)
+        # BB
         BB = TA.BBANDS(df, period=20, std_multiplier=2)
-        #AO
+        # AO
         AO = TA.AO(df, slow_period=20, fast_period=10)
-        #Concatenate
+        # Concatenate
         df = pd.concat([df, KC, BB, AO], axis=1)
 
-        #Conditions
+        # Conditions
         df['SQUEEZE'] = (df.BB_LOWER >= df.KC_LOWER) | (df.BB_UPPER <= df.KC_UPPER)
         df['ASCENDING'] = df.AO.iloc[-1] > df.AO.iloc[-2]
 
         df.dropna(inplace=True)
 
-
-        if df.empty==False and df.SQUEEZE.iloc[-1]==True and df.ASCENDING.iloc[-1]==True:
+        if not df.empty and df.SQUEEZE.iloc[-1] and df.ASCENDING.iloc[-1]:
             squeezes = pd.concat([squeezes, df.iloc[[-1]]])
         else:
             pass
@@ -80,32 +78,30 @@ def scanner_day(data):
     squeezes = pd.DataFrame()
 
     for ticker in tickers:
-
         df = data.loc[:, (slice(None), ticker)].copy()
         df.columns = df.columns.droplevel(1)
         df.columns = df.columns.str.lower()
         df['ticker'] = ticker
 
-        #Volume
+        # Volume
         df['volume_average'] = df['volume'].mean()
         df['volume_zscore'] = (df['volume'] - df['volume'].shift(1).mean()) / df['volume'].shift(1).std()
-        #KC
-        KC = TA.KC(df, period=20,atr_period=20, kc_mult=1.5)
-        #BB
+        # KC
+        KC = TA.KC(df, period=20, atr_period=20, kc_mult=1.5)
+        # BB
         BB = TA.BBANDS(df, period=20, std_multiplier=2)
-        #AO
+        # AO
         AO = TA.AO(df, slow_period=20, fast_period=10)
-        #Concatenate
+        # Concatenate
         df = pd.concat([df, KC, BB, AO], axis=1)
 
-        #Conditions
+        # Conditions
         df['SQUEEZE'] = (df.BB_LOWER >= df.KC_LOWER) | (df.BB_UPPER <= df.KC_UPPER)
         df['ASCENDING'] = df.AO.iloc[-1] > df.AO.iloc[-2]
 
         df.dropna(inplace=True)
 
-
-        if df.empty==False and df.SQUEEZE.iloc[-1]==True and df.ASCENDING.iloc[-1]==True:
+        if not df.empty and df.SQUEEZE.iloc[-1] and df.ASCENDING.iloc[-1]:
             squeezes = pd.concat([squeezes, df.iloc[[-1]]])
         else:
             pass
@@ -116,10 +112,9 @@ def scanner_day(data):
 
 
 def plot_ticker_html(ticker):
-
     st.markdown(f'''{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})''')
     
-    fig_html =f'''
+    fig_html = f'''
     <!-- TradingView Widget BEGIN -->
     <div class="tradingview-widget-container">
         <div class="tradingview-widget-container__widget"></div>
@@ -152,7 +147,7 @@ def plot_ticker_html(ticker):
 
 ##### Data download & Calculations #####
 
-#1 Download & process weekly data
+# 1 Download & process weekly data
 st.session_state.metadata = download_metadata()
 metadata = st.session_state.metadata
 st.session_state.data_wk = download_data_wk()
@@ -160,7 +155,7 @@ data_wk = st.session_state.data_wk
 st.session_state.squeezes_wk = scanner_wk(data_wk)
 squeezes_wk = st.session_state.squeezes_wk
 
-#2 Download & process daily data
+# 2 Download & process daily data
 st.session_state.tickers_wk = squeezes_wk.ticker.tolist()
 tickers_day = st.session_state.tickers_wk
 st.session_state.data_day = download_data_day(tickers_day)
@@ -177,16 +172,11 @@ with left_datacontainer:
     with st.expander('Weekly Squeezes'):
         st.dataframe(squeezes_wk, hide_index=True)
 
-
-
-
 ##### Plotting charts in Mid & Right columns #####
 with right_resultcontainer:
-
     daily_tab, weekly_tab = st.tabs(['Daily Results', 'Weekly Results'])
 
     with daily_tab:
-        
         num_plots_day = st.number_input('Display Num. Plots', min_value=1, max_value=len(squeezes_day), value=int(0.1*len(squeezes_day)))
         left_resultsplot, right_resultsplot = st.columns([1,1])
 
@@ -210,9 +200,8 @@ with right_resultcontainer:
                     i += 1
 
     with weekly_tab:
-      
-      num_plots_wk = st.number_input('Display Num. Plots', min_value=1, max_value=len(squeezes_wk), value=int(0.1*len(squeezes_wk)))
-      left_resultsplot, right_resultsplot = st.columns([1,1])
+        num_plots_wk = st.number_input('Display Num. Plots', min_value=1, max_value=len(squeezes_wk), value=int(0.1*len(squeezes_wk)))
+        left_resultsplot, right_resultsplot = st.columns([1,1])
 
         i = 0
         for ticker in squeezes_wk[:num_plots_wk].ticker.tolist():
@@ -224,11 +213,4 @@ with right_resultcontainer:
                     except:
                         st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
                     i += 1
-            else:
-                with right_resultsplot:
-                    try:
-                        fig = plot_ticker_html(ticker)
-                        components.html(fig, height=300)
-                    except:
-                        st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
-                    i += 1
+           
