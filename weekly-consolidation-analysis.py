@@ -186,10 +186,12 @@ with right_resultcontainer:
     daily_tab, weekly_tab = st.tabs(['Daily Results', 'Weekly Results'])
 
     with daily_tab:
+        
+        num_plots_day = st.number_input('Display Num. Plots', min_value=1, max_value=len(squeezes_day), value=int(0.1*len(squeezes_day)))
         left_resultsplot, right_resultsplot = st.columns([1,1])
 
         i = 0
-        for ticker in squeezes_day.ticker.tolist():
+        for ticker in squeezes_day[:num_plots_day].ticker.tolist():
             if i % 2 == 0:
                 with left_resultsplot:
                     try:
@@ -208,10 +210,12 @@ with right_resultcontainer:
                     i += 1
 
     with weekly_tab:
-        left_resultsplot, right_resultsplot = st.columns([1,1])
+      
+      num_plots_wk = st.number_input('Display Num. Plots', min_value=1, max_value=len(squeezes_wk), value=int(0.1*len(squeezes_wk)))
+      left_resultsplot, right_resultsplot = st.columns([1,1])
 
         i = 0
-        for ticker in squeezes_wk.ticker.tolist():
+        for ticker in squeezes_wk[:num_plots_wk].ticker.tolist():
             if i % 2 == 0:
                 with left_resultsplot:
                     try:
