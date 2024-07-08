@@ -23,7 +23,7 @@ def download_metadata():
 
 @st.cache_data(ttl='1d')
 def download_data_wk():
-    url = 'metadata_squeeze.csv'
+    url = 'metadata.csv'
     stocks = pd.read_csv(url)
     tickers = stocks['Symbol'].tolist()
     data = yf.download(tickers, period='6mo', interval='1wk', auto_adjust=True, progress=True)
