@@ -65,7 +65,7 @@ def scanner_wk(data):
         else:
             pass
 
-    squeezes = squeezes.sort_values('volume', ascending=False)
+    squeezes = squeezes.sort_values('volume_average', ascending=False)
 
     return squeezes
 
