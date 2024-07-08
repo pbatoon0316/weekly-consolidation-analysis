@@ -183,23 +183,48 @@ with left_datacontainer:
 ##### Plotting charts in Mid & Right columns #####
 with right_resultcontainer:
 
-    left_resultsplot, right_resultsplot = st.columns([1,1])
+    daily_tab, weekly_tab = st.tabs(['Daily Results', 'Weekly Results'])
 
-    i = 0
-    for ticker in squeezes_day.ticker.tolist():
-        if i % 2 == 0:
-            with left_resultsplot:
-                try:
-                    fig = plot_ticker_html(ticker)
-                    components.html(fig, height=300)
-                except:
-                    st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
-                i += 1
-        else:
-            with right_resultsplot:
-                try:
-                    fig = plot_ticker_html(ticker)
-                    components.html(fig, height=300)
-                except:
-                    st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
-                i += 1
+    with daily_tab:
+        left_resultsplot, right_resultsplot = st.columns([1,1])
+
+        i = 0
+        for ticker in squeezes_day.ticker.tolist():
+            if i % 2 == 0:
+                with left_resultsplot:
+                    try:
+                        fig = plot_ticker_html(ticker)
+                        components.html(fig, height=300)
+                    except:
+                        st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
+                    i += 1
+            else:
+                with right_resultsplot:
+                    try:
+                        fig = plot_ticker_html(ticker)
+                        components.html(fig, height=300)
+                    except:
+                        st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
+                    i += 1
+
+    with weekly_tab:
+        left_resultsplot, right_resultsplot = st.columns([1,1])
+
+        i = 0
+        for ticker in squeezes_wk.ticker.tolist():
+            if i % 2 == 0:
+                with left_resultsplot:
+                    try:
+                        fig = plot_ticker_html(ticker)
+                        components.html(fig, height=300)
+                    except:
+                        st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
+                    i += 1
+            else:
+                with right_resultsplot:
+                    try:
+                        fig = plot_ticker_html(ticker)
+                        components.html(fig, height=300)
+                    except:
+                        st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
+                    i += 1
