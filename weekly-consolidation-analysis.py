@@ -1,4 +1,3 @@
-###############
 import pandas as pd
 import yfinance as yf
 from finta import TA
@@ -17,13 +16,13 @@ st.set_page_config(page_title='Weekly Consolidation Analysis',
 
 @st.cache_data(ttl='1d')
 def download_metadata():
-    url = 'metadata.csv'
+    url = 'metadata_squeeze.csv'
     metadata = pd.read_csv(url)
     return metadata
 
 @st.cache_data(ttl='12hr')
 def download_data_wk():
-    url = 'metadata.csv'
+    url = 'metadata_squeeze.csv'
     stocks = pd.read_csv(url)
     tickers = stocks['Symbol'].tolist()
     data = yf.download(tickers, period='6mo', interval='1wk', auto_adjust=True, progress=True)
@@ -204,9 +203,17 @@ with right_resultcontainer:
         left_resultsplot, right_resultsplot = st.columns([1,1])
 
         i = 0
-        for ticker in squeezes_wk[:num_plots_wk].ticker.tolist():
+        for ticker in squeezes_day[:num_plots_wk].ticker.tolist():
             if i % 2 == 0:
                 with left_resultsplot:
+                    try:
+                        fig = plot_ticker_html(ticker)
+                        components.html(fig, height=300)
+                    except:
+                        st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
+                    i += 1
+            else:
+                with right_resultsplot:
                     try:
                         fig = plot_ticker_html(ticker)
                         components.html(fig, height=300)
