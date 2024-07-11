@@ -173,10 +173,11 @@ with left_datacontainer:
 
 ##### Plotting charts in Mid & Right columns #####
 with right_resultcontainer:
-    daily_tab, weekly_tab = st.tabs(['Daily Results', 'Weekly Results'])
+    weekly_tab, daily_tab = st.tabs(['Weekly Results', 'Daily Results'])
 
     with daily_tab:
         num_plots_day = st.number_input(f'Display Num. Plots (max={len(squeezes_day)})', min_value=1, max_value=len(squeezes_day), value=int(0.1*len(squeezes_day)))
+        interval_selector = st.toggle('View Daily Interval')
         left_resultsplot, right_resultsplot = st.columns([1,1])
 
         i = 0
