@@ -110,7 +110,7 @@ def scanner_day(data):
     return squeezes
 
 
-def plot_ticker_html(ticker):
+def plot_ticker_html(ticker='SPY',interval='W'):
     st.markdown(f'''{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})''')
     
     fig_html = f'''
@@ -121,7 +121,7 @@ def plot_ticker_html(ticker):
         {{
         "height": "290",
         "symbol": "{ticker}",
-        "interval": "W",
+        "interval": "{interval}",
         "timezone": "Etc/UTC",
         "theme": "light",
         "style": "1",
@@ -176,7 +176,7 @@ with right_resultcontainer:
     daily_tab, weekly_tab = st.tabs(['Daily Results', 'Weekly Results'])
 
     with daily_tab:
-        num_plots_day = st.number_input('Display Num. Plots', min_value=1, max_value=len(squeezes_day), value=int(0.1*len(squeezes_day)))
+        num_plots_day = st.number_input(f'Display Num. Plots (max={len(squeezes_day)})', min_value=1, max_value=len(squeezes_day), value=int(0.1*len(squeezes_day)))
         left_resultsplot, right_resultsplot = st.columns([1,1])
 
         i = 0
@@ -184,7 +184,7 @@ with right_resultcontainer:
             if i % 2 == 0:
                 with left_resultsplot:
                     try:
-                        fig = plot_ticker_html(ticker)
+                        fig = plot_ticker_html(ticker=ticker,interval='D')
                         components.html(fig, height=300)
                     except:
                         st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
@@ -192,14 +192,14 @@ with right_resultcontainer:
             else:
                 with right_resultsplot:
                     try:
-                        fig = plot_ticker_html(ticker)
+                        fig = plot_ticker_html(ticker=ticker,interval='D')
                         components.html(fig, height=300)
                     except:
                         st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
                     i += 1
 
     with weekly_tab:
-        num_plots_wk = st.number_input('Display Num. Plots', min_value=1, max_value=len(squeezes_wk), value=int(0.1*len(squeezes_wk)))
+        num_plots_wk = st.number_input(f'Display Num. Plots (max={len(squeezes_wk)})', min_value=1, max_value=len(squeezes_wk), value=int(0.1*len(squeezes_wk)))
         left_resultsplot, right_resultsplot = st.columns([1,1])
 
         i = 0
@@ -207,7 +207,7 @@ with right_resultcontainer:
             if i % 2 == 0:
                 with left_resultsplot:
                     try:
-                        fig = plot_ticker_html(ticker)
+                        fig = plot_ticker_html(ticker=ticker,interval='W')
                         components.html(fig, height=300)
                     except:
                         st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
@@ -215,7 +215,7 @@ with right_resultcontainer:
             else:
                 with right_resultsplot:
                     try:
-                        fig = plot_ticker_html(ticker)
+                        fig = plot_ticker_html(ticker=ticker,interval='W')
                         components.html(fig, height=300)
                     except:
                         st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
