@@ -4,6 +4,7 @@ from finta import TA
 import warnings
 import streamlit as st
 import streamlit.components.v1 as components
+import math
 
 ######################
 # Set the display option to show 2 decimal places
@@ -177,7 +178,6 @@ with right_resultcontainer:
 
     with daily_tab:
         num_plots_day = st.number_input(f'Display Num. Plots (max={len(squeezes_day)})', min_value=1, max_value=len(squeezes_day), value=int(0.1*len(squeezes_day)))
-        interval_selector = st.toggle('View Daily Interval')
         left_resultsplot, right_resultsplot = st.columns([1,1])
 
         i = 0
@@ -200,7 +200,7 @@ with right_resultcontainer:
                     i += 1
 
     with weekly_tab:
-        num_plots_wk = st.number_input(f'Display Num. Plots (max={len(squeezes_wk)})', min_value=1, max_value=len(squeezes_wk), value=int(0.1*len(squeezes_wk)))
+        num_plots_wk = st.number_input(f'Display Num. Plots (max={len(squeezes_wk)})', min_value=1, max_value=len(squeezes_wk), value=math.ceil(0.1*len(squeezes_wk)))
         left_resultsplot, right_resultsplot = st.columns([1,1])
 
         i = 0
