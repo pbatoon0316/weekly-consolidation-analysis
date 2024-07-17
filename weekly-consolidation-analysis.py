@@ -177,7 +177,7 @@ with right_resultcontainer:
     weekly_tab, daily_tab = st.tabs(['Weekly Results', 'Daily Results'])
 
     with daily_tab:
-        num_plots_day = st.number_input(f'Display Num. Plots (max={len(squeezes_day)})', min_value=1, max_value=len(squeezes_day), value=int(0.1*len(squeezes_day)))
+        num_plots_day = st.number_input(f'Display Num. Plots (max={len(squeezes_day)})', min_value=1, max_value=len(squeezes_day), value=math.ceil(0.1*len(squeezes_day)))
         left_resultsplot, right_resultsplot = st.columns([1,1])
 
         i = 0
