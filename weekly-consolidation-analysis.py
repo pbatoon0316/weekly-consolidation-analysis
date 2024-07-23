@@ -204,7 +204,7 @@ with right_resultcontainer:
         left_resultsplot, right_resultsplot = st.columns([1,1])
 
         i = 0
-        for ticker in squeezes_day[:num_plots_wk].ticker.tolist():
+        for ticker in squeezes_wk[:num_plots_wk].ticker.tolist():
             if i % 2 == 0:
                 with left_resultsplot:
                     try:
