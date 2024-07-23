@@ -54,7 +54,7 @@ def scanner_wk(data):
 
         # Conditions
         df['SQUEEZE'] = (df.BB_LOWER >= df.KC_LOWER) | (df.BB_UPPER <= df.KC_UPPER)
-        df['ASCENDING'] = df.AO.iloc[-1] > df.AO.iloc[-2]
+        df['ASCENDING'] = (df.AO.iloc[-1] > df.AO.iloc[-2]) & (df.AO.iloc[-2] > df.AO.iloc[-3]) & (df.AO.iloc[-3] > df.AO.iloc[-4])
 
         df.dropna(inplace=True)
 
