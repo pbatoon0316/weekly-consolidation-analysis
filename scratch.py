@@ -22,7 +22,7 @@ def get_tickers(metadata, minval=0, maxval=2000):
 
 metadata_csv = 'nasdaq_screener_1727589550419.csv'
 metadata = clean_metadata(metadata_csv)
-tickers = get_tickers(metadata, minval=0, maxval=2000) ####['WBD','CMCSA','PBR','CNH','LUV']
+tickers =  get_tickers(metadata, minval=0, maxval=2000) ###['WBD','CMCSA','PBR','CNH','LUV']
 
 
 #%% Download stock data from yfinance
@@ -42,9 +42,14 @@ def scanner_wk(data):
     for ticker in tickers:
         print(ticker)
         df = data.loc[:, (slice(None), ticker)].copy()
+        
+        df.dropna(inplace=True)
         df.columns = df.columns.droplevel(1)
         df.columns = df.columns.str.lower()
         df['ticker'] = ticker
+        
+        if df.empty or len(df)<5:
+            continue
 
         # Volume
         df['volume_average'] = df['volume'].mean()
