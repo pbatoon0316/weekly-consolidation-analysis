@@ -6,7 +6,7 @@ import time
 os.chdir(r'C:\Users\pabatoon\Downloads\weekly-consolidation-analysis-main')
 print("Current working directory:", os.getcwd())
 
-#%% Obtain tickers from raw nasdaq table. With data cleanup
+#% Obtain tickers from raw nasdaq table. With data cleanup
 def clean_metadata(metadata_csv):
     metadata = pd.read_csv(metadata_csv)
     metadata.dropna(subset=['Market Cap'], inplace=True)
@@ -20,14 +20,12 @@ def get_tickers(metadata, minval=0, maxval=2000):
     return tickers
 
 
-#%% Download stock data from yfinance
-
+#% Download stock data from yfinance
 def download_data_wk(tickers):
     data = yf.download(tickers, period='1y', interval='1wk', auto_adjust=True, progress=True)
     return data
 
-#%% Input stock data into squeeze screener
-
+#% Input stock data into squeeze screener
 def scanner_wk(data):
     tickers = list(data.columns.get_level_values(1).unique())
     squeezes = pd.DataFrame()
@@ -65,7 +63,7 @@ def scanner_wk(data):
 
         # Conditions
         df['SQUEEZE'] = (df.BB_LOWER >= df.KC_LOWER) | (df.BB_UPPER <= df.KC_UPPER)
-        df['ASCENDING'] = (df.close.iloc[-1] > df.EMA20.iloc[-1]) & (df.AO.iloc[-1] > df.AO.iloc[-2]) #& (df.AO.iloc[-2] > df.AO.iloc[-3]) & (df.AO.iloc[-3] > df.AO.iloc[-4])
+        df['ASCENDING'] = (df.close.iloc[-1] > df.EMA50.iloc[-1]) & (df.AO.iloc[-1] > df.AO.iloc[-2]) #& (df.AO.iloc[-2] > df.AO.iloc[-3]) & (df.AO.iloc[-3] > df.AO.iloc[-4])
 
         df.dropna(inplace=True)
 
@@ -77,6 +75,12 @@ def scanner_wk(data):
     squeezes = squeezes.sort_values('volume_average', ascending=False)
 
     return squeezes
+
+#%% Sidebar Layout
+
+with st.Sidebar
+
+
 
 
 #%%
