@@ -1,60 +1,84 @@
-import pandas as pd
-import yfinance as yf
-from finta import TA
 import warnings
-import streamlit as st
-import streamlit.components.v1 as components
+import time
 import math
 
-######################
-# Set the display option to show 2 decimal places
+import pandas as pd
+import yfinance as yf
+import streamlit as st
+import streamlit.components.v1 as components
+
+#%% Set the display option to show 2 decimal places
+
 pd.set_option('display.float_format', '{:.2f}'.format)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-st.set_page_config(page_title='Weekly Consolidation Analysis',
-                   page_icon='🙏', 
+st.set_page_config(page_title='Weekly Consolidation Screener',
+                   page_icon='📇', 
                    layout="wide")
 
-@st.cache_data(ttl='1d')
-def download_metadata():
-    url = 'metadata_squeeze.csv'
-    metadata = pd.read_csv(url)
-    return metadata
+#%% Obtain tickers from raw nasdaq table. With data cleanup
 
-@st.cache_data(ttl='12hr')
-def download_data_wk():
-    url = 'metadata_squeeze.csv'
-    stocks = pd.read_csv(url)
-    tickers = stocks['Symbol'].tolist()
-    data = yf.download(tickers, period='6mo', interval='1wk', auto_adjust=True, progress=True)
+@st.cache_resource(ttl='12hr')
+def clean_metadata(metadata_csv):
+    metadata = pd.read_csv(metadata_csv)
+    metadata.dropna(subset=['Market Cap'], inplace=True)
+    metadata = metadata.sort_values(by='Market Cap', ascending=False)
+    metadata['Symbol'] = metadata['Symbol'].str.replace('/', '-')
+    metadata['ticker'] = metadata['Symbol']
+    metadata.reset_index(drop=True, inplace=True)
+    return metadata 
+
+@st.cache_resource(ttl='12hr')
+def get_tickers(metadata, minval=0, maxval=2000):
+    tickers = metadata['Symbol'][minval:maxval].tolist()
+    return tickers
+
+@st.cache_resource(ttl='12hr')
+#% Download stock data from yfinance
+def download_data_wk(tickers):
+    data = yf.download(tickers, period='1y', interval='1wk', auto_adjust=True, progress=True)
     return data
 
 @st.cache_data(ttl='12hr')
+#% Input stock data into squeeze screener
 def scanner_wk(data):
     tickers = list(data.columns.get_level_values(1).unique())
     squeezes = pd.DataFrame()
 
     for ticker in tickers:
         df = data.loc[:, (slice(None), ticker)].copy()
+        
+        df.dropna(inplace=True)
         df.columns = df.columns.droplevel(1)
         df.columns = df.columns.str.lower()
         df['ticker'] = ticker
+        
+        if df.empty or len(df)<5:
+            continue
 
         # Volume
         df['volume_average'] = df['volume'].mean()
         df['volume_zscore'] = (df['volume'] - df['volume'].shift(1).mean()) / df['volume'].shift(1).std()
-        # KC
-        KC = TA.KC(df, period=20, atr_period=20, kc_mult=1.5)
-        # BB
-        BB = TA.BBANDS(df, period=20, std_multiplier=2)
-        # AO
-        AO = TA.AO(df, slow_period=20, fast_period=10)
-        # Concatenate
-        df = pd.concat([df, KC, BB, AO], axis=1)
+        
+        #Exponential Moving Averages
+        df['EMA50'] = df['close'].ewm(50).mean()
+        df['EMA20'] = df['close'].ewm(20).mean()
+        df['EMA10'] = df['close'].ewm(10).mean()
+        
+        # Keltner Channel
+        df['ATR'] = (df['high'] - df['low']).rolling(20).mean()
+        df['KC_UPPER'] = df['EMA20'] + 1.5*df['ATR']
+        df['KC_LOWER'] = df['EMA20'] - 1.5*df['ATR']
+        # Bollinger Bands
+        df['BB_UPPER'] = df['EMA20'] + 2*df['close'].rolling(20).std()
+        df['BB_LOWER'] = df['EMA20'] - 2*df['close'].rolling(20).std()
+        
+        # Awesome Oscillator
+        df['AO'] =  df['EMA10'] - df['EMA20']
 
         # Conditions
         df['SQUEEZE'] = (df.BB_LOWER >= df.KC_LOWER) | (df.BB_UPPER <= df.KC_UPPER)
-        df['ASCENDING'] = (df.AO.iloc[-1] > df.AO.iloc[-2]) & (df.AO.iloc[-2] > df.AO.iloc[-3]) & (df.AO.iloc[-3] > df.AO.iloc[-4])
+        df['ASCENDING'] = (df.close.iloc[-1] > df.EMA50.iloc[-1]) & (df.AO.iloc[-1] > df.AO.iloc[-2]) #& (df.AO.iloc[-2] > df.AO.iloc[-3]) & (df.AO.iloc[-3] > df.AO.iloc[-4])
 
         df.dropna(inplace=True)
 
@@ -67,59 +91,18 @@ def scanner_wk(data):
 
     return squeezes
 
-@st.cache_data(ttl='1hr')
-def download_data_day(tickers):
-    data = yf.download(tickers, period='3mo', interval='1d', auto_adjust=True, progress=True)
-    return data
-
-@st.cache_data(ttl='1hr')
-def scanner_day(data):
-    tickers = list(data.columns.get_level_values(1).unique())
-    squeezes = pd.DataFrame()
-
-    for ticker in tickers:
-        df = data.loc[:, (slice(None), ticker)].copy()
-        df.columns = df.columns.droplevel(1)
-        df.columns = df.columns.str.lower()
-        df['ticker'] = ticker
-
-        # Volume
-        df['volume_average'] = df['volume'].mean()
-        df['volume_zscore'] = (df['volume'] - df['volume'].shift(1).mean()) / df['volume'].shift(1).std()
-        # KC
-        KC = TA.KC(df, period=20, atr_period=20, kc_mult=1.5)
-        # BB
-        BB = TA.BBANDS(df, period=20, std_multiplier=2)
-        # AO
-        AO = TA.AO(df, slow_period=20, fast_period=10)
-        # Concatenate
-        df = pd.concat([df, KC, BB, AO], axis=1)
-
-        # Conditions
-        df['SQUEEZE'] = (df.BB_LOWER >= df.KC_LOWER) | (df.BB_UPPER <= df.KC_UPPER)
-        df['ASCENDING'] = df.AO.iloc[-1] > df.AO.iloc[-2]
-
-        df.dropna(inplace=True)
-
-        if not df.empty and df.SQUEEZE.iloc[-1] and df.ASCENDING.iloc[-1]:
-            squeezes = pd.concat([squeezes, df.iloc[[-1]]])
-        else:
-            pass
-
-    squeezes = squeezes.sort_values('volume_average', ascending=False)
-
-    return squeezes
-
-
+# Plot TradingView charts for each ticker
 def plot_ticker_html(ticker='SPY',interval='W'):
     st.markdown(f'''{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})''')
     
     fig_html = f'''
+
     <!-- TradingView Widget BEGIN -->
     <div class="tradingview-widget-container">
-        <div class="tradingview-widget-container__widget"></div>
-        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
-        {{
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+      {{
+        "autosize": true,
         "height": "290",
         "symbol": "{ticker}",
         "interval": "{interval}",
@@ -127,98 +110,70 @@ def plot_ticker_html(ticker='SPY',interval='W'):
         "theme": "light",
         "style": "1",
         "locale": "en",
-        "backgroundColor": "rgba(255, 255, 255, 1)",
-        "gridColor": "rgba(0, 0, 0, 0.06)",
         "hide_top_toolbar": true,
         "allow_symbol_change": false,
         "save_image": false,
         "calendar": false,
         "studies": [
-            "STD;Bollinger_Bands"],
+          "STD;Bollinger_Bands"
+        ],
         "support_host": "https://www.tradingview.com"
-        }}
-        </script>
+      }}
+      </script>
     </div>
     <!-- TradingView Widget END -->
     '''
     return fig_html
 
-######################
+#%% Load & download data
 
-##### Data download & Calculations #####
+metadata_csv = 'nasdaq_screener_1727589550419.csv'
+metadata = clean_metadata(metadata_csv)
+tickers = get_tickers(metadata, minval=0, maxval=2200) 
+data_wk = download_data_wk(tickers)
 
-# 1 Download & process weekly data
-st.session_state.metadata = download_metadata()
-metadata = st.session_state.metadata
-st.session_state.data_wk = download_data_wk()
-data_wk = st.session_state.data_wk
-st.session_state.squeezes_wk = scanner_wk(data_wk)
-squeezes_wk = st.session_state.squeezes_wk
+#%% Process & screen
+squeezes_wk = scanner_wk(data_wk)
+squeezes_wk = squeezes_wk.merge(metadata[['ticker','Name','Market Cap','Sector','Industry']], how='left', on='ticker')
+squeezes_wk = squeezes_wk.loc[squeezes_wk['volume_average']>250000]
+squeezes_wk = squeezes_wk.sort_values(by=['Market Cap','volume_average'], ascending=False).dropna()
 
-# 2 Download & process daily data
-st.session_state.tickers_wk = squeezes_wk.ticker.tolist()
-tickers_day = st.session_state.tickers_wk
-st.session_state.data_day = download_data_day(tickers_day)
-data_day = st.session_state.data_day
-st.session_state.squeezes_day = scanner_day(data_day)
-squeezes_day = st.session_state.squeezes_day
 
-left_datacontainer, right_resultcontainer = st.columns([1,2])
+#%% Sidebar Layout
 
-with left_datacontainer:
-    st.markdown('Daily Squeezes')
-    st.dataframe(squeezes_day, hide_index=True)
+sector_filter = st.sidebar.selectbox(label='Filter by Sector', 
+                                         options=squeezes_wk['Sector'].unique(),
+                                         index=None)
 
-    with st.expander('Weekly Squeezes'):
-        st.dataframe(squeezes_wk, hide_index=True)
+if sector_filter == None:
+    filter_squeezes_wk = squeezes_wk
+else:
+    filter_squeezes_wk = squeezes_wk.loc[squeezes_wk['Sector']==sector_filter]
 
-##### Plotting charts in Mid & Right columns #####
-with right_resultcontainer:
-    weekly_tab, daily_tab = st.tabs(['Weekly Results', 'Daily Results'])
 
-    with daily_tab:
-        num_plots_day = st.number_input(f'Display Num. Plots (max={len(squeezes_day)})', min_value=1, max_value=len(squeezes_day), value=math.ceil(0.5*len(squeezes_day)))
-        left_resultsplot, right_resultsplot = st.columns([1,1])
+num_plots_day = st.sidebar.number_input(f'Display Num. Plots (max = {len(filter_squeezes_wk)})', 
+                                        min_value=1, max_value=len(filter_squeezes_wk), 
+                                        value=math.ceil(0.10*len(filter_squeezes_wk)))
+st.sidebar.divider()
 
+st.sidebar.expander('Weekly Squeeze Reults').dataframe(filter_squeezes_wk[['ticker','Name','Market Cap','volume_average','Sector','Industry']])
+
+sector_counts = squeezes_wk[['Sector','ticker']].groupby('Sector').count()
+st.sidebar.text(sector_counts)
+
+
+#%% Result Layout
+result_cols = st.columns(3)
+i = 0
+for ticker in filter_squeezes_wk[:num_plots_day].ticker.tolist():
+    with result_cols[i]:
+        try:
+            fig = plot_ticker_html(ticker=ticker,interval='W')
+            components.html(fig, height=300)
+        except:
+            st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
+        i += 1
+    if i == 3:
         i = 0
-        for ticker in squeezes_day[:num_plots_day].ticker.tolist():
-            if i % 2 == 0:
-                with left_resultsplot:
-                    try:
-                        fig = plot_ticker_html(ticker=ticker,interval='D')
-                        components.html(fig, height=300)
-                    except:
-                        st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
-                    i += 1
-            else:
-                with right_resultsplot:
-                    try:
-                        fig = plot_ticker_html(ticker=ticker,interval='D')
-                        components.html(fig, height=300)
-                    except:
-                        st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
-                    i += 1
-
-    with weekly_tab:
-        num_plots_wk = st.number_input(f'Display Num. Plots (max={len(squeezes_wk)})', min_value=1, max_value=len(squeezes_wk), value=math.ceil(0.25*len(squeezes_wk)))
-        left_resultsplot, right_resultsplot = st.columns([1,1])
-
-        i = 0
-        for ticker in squeezes_wk[:num_plots_wk].ticker.tolist():
-            if i % 2 == 0:
-                with left_resultsplot:
-                    try:
-                        fig = plot_ticker_html(ticker=ticker,interval='W')
-                        components.html(fig, height=300)
-                    except:
-                        st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
-                    i += 1
-            else:
-                with right_resultsplot:
-                    try:
-                        fig = plot_ticker_html(ticker=ticker,interval='W')
-                        components.html(fig, height=300)
-                    except:
-                        st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
-                    i += 1
-           
+    else:
+        pass
