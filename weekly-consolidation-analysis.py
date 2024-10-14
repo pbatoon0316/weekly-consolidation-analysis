@@ -156,7 +156,7 @@ num_plots_day = st.sidebar.number_input(f'Display Num. Plots (max = {len(filter_
                                         value=math.ceil(0.10*len(filter_squeezes_wk)))
 st.sidebar.divider()
 
-st.sidebar.expander('Weekly Squeeze Reults').dataframe(filter_squeezes_wk[['ticker','Name','Market Cap','volume_average','Sector','Industry']])
+st.sidebar.expander('Weekly Squeeze Reults').dataframe(filter_squeezes_wk[['ticker','Name','close','Market Cap','volume_average','Sector','Industry']])
 
 sector_counts = squeezes_wk[['Sector','ticker']].groupby('Sector').count()
 st.sidebar.text(sector_counts)
