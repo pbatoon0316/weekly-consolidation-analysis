@@ -163,17 +163,30 @@ st.sidebar.text(sector_counts)
 
 
 #%% Result Layout
-result_cols = st.columns(3)
-i = 0
-for ticker in filter_squeezes_wk[:num_plots_day].ticker.tolist():
-    with result_cols[i]:
+
+desktop_tab, mobile_tab = st.tabs(["Desktop", "Mobile"])
+
+with desktop_tab:
+    result_cols = st.columns(3)
+    i = 0
+    for ticker in filter_squeezes_wk[:num_plots_day].ticker.tolist():
+        with result_cols[i]:
+            try:
+                fig = plot_ticker_html(ticker=ticker,interval='W')
+                components.html(fig, height=300)
+            except:
+                st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
+            i += 1
+        if i == 3:
+            i = 0
+        else:
+            pass
+        
+with mobile_tab:
+    for ticker in filter_squeezes_wk[:num_plots_day].ticker.tolist():
         try:
             fig = plot_ticker_html(ticker=ticker,interval='W')
             components.html(fig, height=300)
         except:
             st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
-        i += 1
-    if i == 3:
-        i = 0
-    else:
-        pass
+
