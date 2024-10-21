@@ -93,6 +93,7 @@ def scanner_wk(data):
 
 # Plot TradingView charts for each ticker
 def plot_ticker_html(ticker='SPY',interval='W'):
+    time.sleep(1)
     st.markdown(f'''{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})''')
     
     fig_html = f'''
@@ -123,7 +124,6 @@ def plot_ticker_html(ticker='SPY',interval='W'):
     </div>
     <!-- TradingView Widget END -->
     '''
-    time.sleep(1)
     return fig_html
 
 #%% Load & download data
