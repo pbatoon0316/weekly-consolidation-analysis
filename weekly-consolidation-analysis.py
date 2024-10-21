@@ -123,6 +123,7 @@ def plot_ticker_html(ticker='SPY',interval='W'):
     </div>
     <!-- TradingView Widget END -->
     '''
+    time.sleep(1)
     return fig_html
 
 #%% Load & download data
