@@ -165,10 +165,10 @@ st.sidebar.text(sector_counts)
 
 #%% Result Layout
 
-desktop_tab, mobile_tab = st.tabs(["Desktop", "Mobile"])
+mobile_view = st.toggle('Mobile View', value=False)
+result_cols = st.columns(3)
 
-with desktop_tab:
-    result_cols = st.columns(3)
+if mobile_view == False:
     i = 0
     for ticker in filter_squeezes_wk[:num_plots_day].ticker.tolist():
         with result_cols[i]:
@@ -182,8 +182,8 @@ with desktop_tab:
             i = 0
         else:
             pass
-        
-with mobile_tab:
+
+if mobile_view == True:
     for ticker in filter_squeezes_wk[:num_plots_day].ticker.tolist():
         try:
             fig = plot_ticker_html(ticker=ticker,interval='W')
