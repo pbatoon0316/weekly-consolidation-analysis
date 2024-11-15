@@ -36,7 +36,7 @@ def get_tickers(metadata, minval=0, maxval=2000):
 @st.cache_resource(ttl='12hr')
 #% Download stock data from yfinance
 def download_data_wk(tickers):
-    data = yf.download(tickers, period='1y', interval='1wk', auto_adjust=True, progress=True)
+    data = yf.download(tickers, period='6mo', interval='1wk', auto_adjust=True, progress=True)
     return data
 
 @st.cache_data(ttl='12hr')
@@ -134,31 +134,48 @@ tickers = get_tickers(metadata, minval=0, maxval=2200)
 data_wk = download_data_wk(tickers)
 
 #%% Process & screen
-squeezes_wk = scanner_wk(data_wk)
-squeezes_wk = squeezes_wk.merge(metadata[['ticker','Name','Market Cap','Sector','Industry']], how='left', on='ticker')
-squeezes_wk = squeezes_wk.loc[squeezes_wk['volume_average']>250000]
-squeezes_wk = squeezes_wk.sort_values(by=['Market Cap','volume_average'], ascending=False).dropna()
+squeezes_wk_data = scanner_wk(data_wk)
+squeezes_wk_data = squeezes_wk_data.merge(metadata[['ticker','Name','Market Cap','Sector','Industry']], how='left', on='ticker')
+squeezes_wk_data = squeezes_wk_data.loc[squeezes_wk_data['volume_average']>250000]
+squeezes_wk_data = squeezes_wk_data.sort_values(by=['Market Cap','volume_average'], ascending=False).dropna()
 
 
 #%% Sidebar Layout
+squeezes_wk = squeezes_wk_data.copy()
 
+# Price Filter
+[price_col1, price_col2] = st.sidebar.columns(2)
+
+with price_col1:
+    min_price = st.number_input(label='Min Price',
+                    min_value=0.0,
+                    max_value=squeezes_wk['close'].max(),
+                    value=0.0)
+with price_col2:
+    max_price = st.number_input(label='Max Price',
+                    min_value=squeezes_wk['close'].min(),
+                    max_value=squeezes_wk['close'].max(),
+                    value=squeezes_wk['close'].max())
+
+squeezes_wk = squeezes_wk_data.loc[squeezes_wk['close']>min_price]
+squeezes_wk = squeezes_wk_data.loc[squeezes_wk['close']<max_price]
+
+# Sector filters
 sector_filter = st.sidebar.selectbox(label='Filter by Sector', 
                                          options=squeezes_wk['Sector'].unique(),
                                          index=None)
-
 if sector_filter == None:
     filter_squeezes_wk = squeezes_wk
 else:
     filter_squeezes_wk = squeezes_wk.loc[squeezes_wk['Sector']==sector_filter]
 
-
 num_plots_day = st.sidebar.number_input(f'Display Num. Plots (max = {len(filter_squeezes_wk)})', 
                                         min_value=1, max_value=len(filter_squeezes_wk), 
                                         value=math.ceil(0.10*len(filter_squeezes_wk)))
+
+# Results
 st.sidebar.divider()
-
 st.sidebar.expander('Weekly Squeeze Reults').dataframe(filter_squeezes_wk[['ticker','Name','close','Market Cap','volume_average','Sector','Industry']])
-
 sector_counts = squeezes_wk[['Sector','ticker']].groupby('Sector').count()
 st.sidebar.text(sector_counts)
 
