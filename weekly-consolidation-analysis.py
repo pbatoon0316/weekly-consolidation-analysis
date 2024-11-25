@@ -1,6 +1,7 @@
 import warnings
 import time
 import math
+import os
 
 import pandas as pd
 import yfinance as yf
@@ -128,7 +129,10 @@ def plot_ticker_html(ticker='SPY',interval='W'):
 
 #%% Load & download data
 
-metadata_csv = 'nasdaq_screener_1727589550419.csv'
+csv_files = [file for file in os.listdir('.') if file.endswith('.csv')]
+metadata_csv = st.sidebar.selectbox(label='Metadata',options=csv_files, index=1)
+#metadata_csv = 'nasdaq_screener_1727589550419.csv'
+
 metadata = clean_metadata(metadata_csv)
 tickers = get_tickers(metadata, minval=0, maxval=2200) 
 data_wk = download_data_wk(tickers)
