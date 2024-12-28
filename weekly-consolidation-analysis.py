@@ -134,7 +134,7 @@ metadata_csv = st.sidebar.selectbox(label='Metadata',options=csv_files, index=1)
 #metadata_csv = 'nasdaq_screener_1727589550419.csv'
 
 metadata = clean_metadata(metadata_csv)
-tickers = get_tickers(metadata, minval=0, maxval=2200) 
+tickers = get_tickers(metadata, minval=0, maxval=1000) 
 data_wk = download_data_wk(tickers)
 
 #%% Process & screen
