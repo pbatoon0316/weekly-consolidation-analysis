@@ -3,6 +3,7 @@ import time
 import math
 import os
 
+import datetime as dt
 import pandas as pd
 import yfinance as yf
 import streamlit as st
@@ -37,7 +38,11 @@ def get_tickers(metadata, minval=0, maxval=2000):
 @st.cache_resource(ttl='12hr')
 #% Download stock data from yfinance
 def download_data_wk(tickers):
-    data = yf.download(tickers, period='6mo', interval='1wk', auto_adjust=True, progress=True)
+    #data = yf.download(tickers, period='6mo', interval='1wk', auto_adjust=True, progress=True)
+    data = yf.download(tickers, interval='1wk', 
+                       start=dt.datetime.today()-dt.timedelta(days=365), 
+                       end= dt.datetime.today(), auto_adjust=True, progress=True,
+                       threads=True)
     return data
 
 @st.cache_data(ttl='12hr')
@@ -130,8 +135,8 @@ def plot_ticker_html(ticker='SPY',interval='W'):
 #%% Load & download data
 
 csv_files = [file for file in os.listdir('.') if file.endswith('.csv')]
-metadata_csv = st.sidebar.selectbox(label='Metadata',options=csv_files, index=1)
-#metadata_csv = 'nasdaq_screener_1727589550419.csv'
+#metadata_csv = st.sidebar.selectbox(label='Metadata',options=csv_files, index=1)
+metadata_csv = 'nasdaq_screener_1727589550419.csv'
 
 metadata = clean_metadata(metadata_csv)
 tickers = get_tickers(metadata, minval=0, maxval=1000) 
@@ -146,6 +151,7 @@ squeezes_wk_data = squeezes_wk_data.sort_values(by=['Market Cap','volume_average
 
 #%% Sidebar Layout
 squeezes_wk = squeezes_wk_data.copy()
+squeezes_wk = squeezes_wk.sort_values('volume_average', ascending=False)
 
 # Price Filter
 [price_col1, price_col2] = st.sidebar.columns(2)
@@ -173,13 +179,17 @@ if sector_filter == None:
 else:
     filter_squeezes_wk = squeezes_wk.loc[squeezes_wk['Sector']==sector_filter]
 
-num_plots_day = st.sidebar.number_input(f'Display Num. Plots (max = {len(filter_squeezes_wk)})', 
-                                        min_value=1, max_value=len(filter_squeezes_wk), 
-                                        value=math.ceil(0.10*len(filter_squeezes_wk)))
+default_num = len(filter_squeezes_wk) if len(filter_squeezes_wk) < 20 else 20
+num_plots_day = st.sidebar.number_input(
+    f'Display Num. Plots (max = {len(filter_squeezes_wk)})', 
+    min_value=1, 
+    max_value=len(filter_squeezes_wk), 
+    value=default_num)
+
 
 # Results
 st.sidebar.divider()
-st.sidebar.expander('Weekly Squeeze Reults').dataframe(filter_squeezes_wk[['ticker','Name','close','Market Cap','volume_average','Sector','Industry']])
+st.sidebar.expander('Weekly Squeeze Reults').dataframe(squeezes_wk)
 sector_counts = squeezes_wk[['Sector','ticker']].groupby('Sector').count()
 st.sidebar.text(sector_counts)
 
@@ -211,4 +221,3 @@ if mobile_view == True:
             components.html(fig, height=300)
         except:
             st.markdown(f'{ticker} - [[Finviz]](https://finviz.com/quote.ashx?t={ticker}&p=d) [[Profitviz]](https://profitviz.com/{ticker})')
-
