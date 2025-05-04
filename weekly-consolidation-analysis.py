@@ -136,7 +136,7 @@ def plot_ticker_html(ticker='SPY',interval='W'):
 
 csv_files = [file for file in os.listdir('.') if file.endswith('.csv')]
 #metadata_csv = st.sidebar.selectbox(label='Metadata',options=csv_files, index=1)
-metadata_csv = 'nasdaq_screener_1727589550419.csv'
+metadata_csv = 'nasdaq_screener_1746373318802.csv'
 
 metadata = clean_metadata(metadata_csv)
 tickers = get_tickers(metadata, minval=0, maxval=1000) 
