@@ -142,6 +142,9 @@ metadata = clean_metadata(metadata_csv)
 tickers = get_tickers(metadata, minval=0, maxval=1000) 
 data_wk = download_data_wk(tickers)
 
+if 'data_wk' not in st.session_state:
+    st.session_state['data_wk'] = data_wk
+
 #%% Process & screen
 squeezes_wk_data = scanner_wk(data_wk)
 squeezes_wk_data = squeezes_wk_data.merge(metadata[['ticker','Name','Market Cap','Sector','Industry']], how='left', on='ticker')
