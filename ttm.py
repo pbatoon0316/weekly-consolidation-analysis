@@ -140,11 +140,14 @@ metadata_csv = 'nasdaq_screener_1746373318802.csv'
 
 metadata = clean_metadata(metadata_csv)
 tickers = get_tickers(metadata, minval=0, maxval=1000) 
-data_wk = download_data_wk(tickers)
 
 # Session state across screener
 if 'data_wk' not in st.session_state:
+    data_wk = download_data_wk(tickers)
     st.session_state['data_wk'] = data_wk
+else:
+    data_wk = st.session_state['data_wk']
+
 
 #%% Process & screen
 squeezes_wk_data = scanner_wk(data_wk)
