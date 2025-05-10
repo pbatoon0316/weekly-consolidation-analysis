@@ -2,7 +2,7 @@ import warnings
 import time
 import math
 import os
-from finta import TA
+
 import datetime as dt
 import pandas as pd
 import yfinance as yf
@@ -14,7 +14,7 @@ import streamlit.components.v1 as components
 pd.set_option('display.float_format', '{:.2f}'.format)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-st.set_page_config(page_title='RSI Trend Screener',
+st.set_page_config(page_title='Weekly Consolidation Screener',
                    page_icon='📇', 
                    layout="wide")
 
@@ -38,10 +38,11 @@ def get_tickers(metadata, minval=0, maxval=2000):
 @st.cache_resource(ttl='12hr')
 #% Download stock data from yfinance
 def download_data_wk(tickers):
-    #data = yf.download(tickers, period='1y', interval='1wk', auto_adjust=True, progress=True)
+    #data = yf.download(tickers, period='6mo', interval='1wk', auto_adjust=True, progress=True)
     data = yf.download(tickers, interval='1wk', 
                        start=dt.datetime.today()-dt.timedelta(days=365), 
-                       end= dt.datetime.today(), auto_adjust=True, progress=True)
+                       end= dt.datetime.today(), auto_adjust=True, progress=True,
+                       threads=True)
     return data
 
 @st.cache_data(ttl='12hr')
@@ -69,7 +70,6 @@ def scanner_wk(data):
         df['EMA50'] = df['close'].ewm(50).mean()
         df['EMA20'] = df['close'].ewm(20).mean()
         df['EMA10'] = df['close'].ewm(10).mean()
-        df['SMA4'] = df['close'].ewm(4).mean()
         
         # Keltner Channel
         df['ATR'] = (df['high'] - df['low']).rolling(20).mean()
@@ -81,22 +81,14 @@ def scanner_wk(data):
         
         # Awesome Oscillator
         df['AO'] =  df['EMA10'] - df['EMA20']
-        
-        # RSI
-        df['RSI'] =  TA.RSI(df,14)
-        df['RSI_SMA14'] = df['RSI'].rolling(14).mean()
 
         # Conditions
         df['SQUEEZE'] = (df.BB_LOWER >= df.KC_LOWER) | (df.BB_UPPER <= df.KC_UPPER)
         df['ASCENDING'] = (df.close.iloc[-1] > df.EMA50.iloc[-1]) & (df.AO.iloc[-1] > df.AO.iloc[-2]) #& (df.AO.iloc[-2] > df.AO.iloc[-3]) & (df.AO.iloc[-3] > df.AO.iloc[-4])
-        
-        cond_rsi = df.RSI_SMA14.iloc[-1] > df.RSI_SMA14.iloc[-2] > df.RSI_SMA14.iloc[-3]
-        cond_rsi_below50 =  df.RSI_SMA14.iloc[-1] < 50
-        cond_ema =  df.close.iloc[-1] > df.EMA50.iloc[-1]
-        
+
         df.dropna(inplace=True)
 
-        if not df.empty and (cond_rsi and cond_rsi_below50 and cond_ema):
+        if not df.empty and df.SQUEEZE.iloc[-1] and df.ASCENDING.iloc[-1]:
             squeezes = pd.concat([squeezes, df.iloc[[-1]]])
         else:
             pass
@@ -148,7 +140,6 @@ metadata_csv = 'nasdaq_screener_1746373318802.csv'
 
 metadata = clean_metadata(metadata_csv)
 tickers = get_tickers(metadata, minval=0, maxval=1000) 
-#data_wk = download_data_wk(tickers)
 
 # Session state across screener
 if 'data_wk' not in st.session_state:
@@ -202,9 +193,10 @@ num_plots_day = st.sidebar.number_input(
     max_value=len(filter_squeezes_wk), 
     value=default_num)
 
+
 # Results
 st.sidebar.divider()
-st.sidebar.expander('Weekly Trend Reults').dataframe(squeezes_wk)
+st.sidebar.expander('Weekly Squeeze Reults').dataframe(squeezes_wk)
 sector_counts = squeezes_wk[['Sector','ticker']].groupby('Sector').count()
 st.sidebar.text(sector_counts)
 
