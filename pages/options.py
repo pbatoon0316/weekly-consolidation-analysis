@@ -14,7 +14,7 @@ with st.sidebar:
     st.header("⚙️ Options Data Settings")
 
     # Step 1: Ticker Input
-    symbol = st.text_input("Enter a symbol (e.g., ^SPX, SPY, AAPL):", "^SPX").strip().upper()
+    symbol = st.text_input("Enter a symbol (e.g., ^SPX, SPY, AAPL):", None).strip().upper()
 
     selected_expirations = []
     if symbol:
@@ -76,7 +76,7 @@ def compute_gamma(row, S):
     IV = row['impliedVolatility']
     sigma = IV
     q = 0.0
-    r = 0.0
+    r = (100 - yf.Ticker('SR1=F').info['previousClose']) / 100 # Using SR1 futures contract
 
     if T <= 0 or sigma <= 0 or S <= 0:
         return np.nan
@@ -128,7 +128,7 @@ if not options_df.empty and "gamma" in options_df.columns:
 
 
     # Step 2: Download price data & flatten multilevel columns
-    period_selection = st.sidebar.selectbox(label='Time Period', options=['5d','2wk','1mo','2mo','3mo','6mo','1yr'], index=4)
+    period_selection = st.sidebar.selectbox(label='Time Period', options=['5d','2wk','1mo','2mo','3mo','6mo','1yr'], index=3)
     price_data = yf.download(symbol, period=period_selection, interval="1d")
     price_data.dropna(inplace=True)
     current_price = float(price_data["Close"].iloc[-1])
@@ -258,4 +258,3 @@ if not options_df.empty and "gamma" in options_df.columns:
 
     # 🚀 Display chart
     st.plotly_chart(fig, use_container_width=True)
-
