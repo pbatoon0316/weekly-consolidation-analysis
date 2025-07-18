@@ -1,10 +1,10 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import numpy as np
-from scipy.stats import norm
+import time
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from py_vollib.black.greeks.analytical import gamma as bsm_gamma
 
 
 st.set_page_config(page_title="Options GEX Dashboard", layout="wide")
@@ -12,29 +12,38 @@ st.set_page_config(page_title="Options GEX Dashboard", layout="wide")
 # Sidebar Inputs
 with st.sidebar:
     st.header("⚙️ Options Data Settings")
+    symbol_input = st.text_input("Enter a symbol (e.g., ^SPX, SPY, AAPL):", value="")
 
-    # Step 1: Ticker Input
-    symbol = st.text_input("Enter a symbol (e.g., ^SPX, SPY, AAPL):", None).strip().upper()
+# Sanitize and validate ticker input
+symbol = symbol_input.strip().upper()
+ticker = None
+selected_expirations = []
 
-    selected_expirations = []
-    if symbol:
-        try:
-            ticker = yf.Ticker(symbol)
-            expirations = ticker.options
+# If no ticker, warn in the main app window
+if not symbol:
+    st.warning("Please input a stock ticker.")
+else:
+    try:
+        ticker = yf.Ticker(symbol)
+        expirations = ticker.options
+        print(f'Loading ${symbol} data')
 
-            # Filter: 1-year worth of expirations
-            one_year_expirations = [d for d in expirations if pd.to_datetime(d) <= pd.Timestamp.today() + pd.Timedelta(days=365)]
-            default_selection = one_year_expirations[:3] if len(one_year_expirations) >= 3 else one_year_expirations
+        # Filter: 1-year worth of expirations
+        one_year_expirations = [
+            d for d in expirations if pd.to_datetime(d) <= pd.Timestamp.today() + pd.Timedelta(days=365)
+        ]
+        default_selection = one_year_expirations[:3] if len(one_year_expirations) >= 3 else one_year_expirations
 
-            # Step 2: Expiration Dates Multiselect
+        # Step 2: Expiration Dates Multiselect (in sidebar)
+        with st.sidebar:
             selected_expirations = st.multiselect(
                 "Select expiration dates:",
                 options=expirations,
                 default=default_selection
             )
 
-        except Exception as e:
-            st.error(f"Could not fetch data for {symbol}. Please check the symbol. Error: {e}")
+    except Exception as e:
+        st.error(f"Could not fetch data for {symbol}. Please check the symbol. Error: {e}")
 
 
 # download and process data
@@ -44,49 +53,50 @@ def get_options_chain(_ticker, expirations):
 
     for exp in expirations:
         try:
-            opt_chain = _ticker.option_chain(exp)
-            calls = opt_chain.calls.copy()
-            puts = opt_chain.puts.copy()
-
-            calls["type"] = "call"
-            puts["type"] = "put"
-            calls["expiration"] = exp
-            puts["expiration"] = exp
-
-            all_options.append(calls)
-            all_options.append(puts)
-
+            chain = _ticker.option_chain(exp)
+            for df, opt_type in [(chain.calls, "call"), (chain.puts, "put")]:
+                if not df.empty:
+                    df = df.copy()
+                    df["type"] = opt_type
+                    df["expiration"] = exp
+                    all_options.append(df)
         except Exception as e:
             st.warning(f"Could not load options for {exp}: {e}")
+        time.sleep(1)
 
-    if all_options:
-        options_df = pd.concat(all_options, ignore_index=True)
-        options_df = options_df[["expiration", "type", "strike", "openInterest", "impliedVolatility"]].dropna()
-        options_df.rename(columns={"openInterest": "oi"}, inplace=True)
-        options_df = options_df[options_df["oi"] > 0]
-        return options_df.sort_values(by="strike")
-    else:
+    if not all_options:
         return pd.DataFrame()
+
+    options_df = pd.concat(all_options, ignore_index=True)
+    options_df.rename(columns={"openInterest": "oi"}, inplace=True)
+
+    # Filter for required columns
+    cols = ["expiration", "type", "strike", "oi", "impliedVolatility"]
+    options_df = options_df[[col for col in cols if col in options_df.columns]].copy()
+
+    return options_df[options_df["oi"] > 0].sort_values("strike")
+
 
     
 # calculate gamma
-def compute_gamma(row, S):
-    K = row['strike']
-    T = (pd.to_datetime(row['expiration']) - pd.Timestamp.today()).days / 365
-    IV = row['impliedVolatility']
-    sigma = IV
-    q = 0.0
-    r = (100 - yf.Ticker('SR1=F').info['previousClose']) / 100 # Using SR1 futures contract
+sr1_close = yf.Ticker('SR1=F').info['previousClose'] 
+r = (100 - sr1_close) / 100
 
-    if T <= 0 or sigma <= 0 or S <= 0:
-        return np.nan
-
+def compute_gamma(row, S, r):
     try:
-        d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
-        gamma = np.exp(-q * T) * norm.pdf(d1) / (S * sigma * np.sqrt(T))
-        return gamma
-    except:
-        return np.nan
+        K = float(row['strike'])
+        sigma = float(row['impliedVolatility'])
+
+        if sigma <= 0 or pd.isna(sigma):
+            return 0.0
+
+        T = max((pd.to_datetime(row['expiration']) - pd.Timestamp.now()).total_seconds() / (365 * 24 * 60 * 60), 1e-6)
+        option_type = 'c' if row['type'] == 'call' else 'p'
+
+        return bsm_gamma(option_type, S, K, T, r, sigma)
+
+    except Exception:
+        return 0.0
 
 
 # show data
@@ -95,7 +105,7 @@ if symbol and selected_expirations:
     
     # Add underlying price for gamma calc
     underlying_price = ticker.history(period="1d")['Close'].iloc[-1]
-    options_df["gamma"] = options_df.apply(lambda row: compute_gamma(row, underlying_price), axis=1)
+    options_df["gamma"] = options_df.apply(lambda row: compute_gamma(row, underlying_price, r), axis=1)
 
 
     if options_df.empty:
@@ -125,19 +135,17 @@ if not options_df.empty and "gamma" in options_df.columns:
     zero_gamma_strike = cumulative.loc[zero_cross_idx, "strike"]
 
 
-
-
     # Step 2: Download price data & flatten multilevel columns
     period_selection = st.sidebar.selectbox(label='Time Period', options=['5d','2wk','1mo','2mo','3mo','6mo','1yr'], index=3)
     price_data = yf.download(symbol, period=period_selection, interval="1d")
     price_data.dropna(inplace=True)
-    current_price = float(price_data["Close"].iloc[-1])
+    current_price = underlying_price
 
 
     if isinstance(price_data.columns, pd.MultiIndex):
         price_data = price_data.xs(symbol, axis=1, level=1)
 
-    st.sidebar.metric('Neg Gamma Exposure', value=f'${round(net_gex,2)}')
+    st.sidebar.metric('Net Gamma Exposure', value=f'${round(net_gex,2)}')
 
     
     # Step 3: Create composite Plotly figure
@@ -166,7 +174,7 @@ if not options_df.empty and "gamma" in options_df.columns:
     # Plot 2: Gamma Exposure
     fig.add_trace(
         go.Bar(
-            x=-1*agg["gex"],
+            x=1*agg["gex"],
             y=agg["strike"],
             orientation="h",
             marker_color="orange",
@@ -176,23 +184,12 @@ if not options_df.empty and "gamma" in options_df.columns:
         ),
         row=1, col=2
     )
-    
-    fig.add_trace(go.Scatter(
-        x=[0],
-        y=[zero_gamma_strike],
-        mode="markers+text",
-        marker=dict(symbol="triangle-left", color="black", size=12),
-        text=["Zero Gamma"],
-        textposition="middle right",
-        showlegend=False
-    ), row=1, col=2)
-
-    
+           
     
     # Plot 3: Open Interest
     fig.add_trace(
         go.Bar(
-            x=-1*agg["oi"],
+            x=1*agg["oi"],
             y=agg["strike"],
             orientation="h",
             marker_color="blue",
@@ -220,8 +217,6 @@ if not options_df.empty and "gamma" in options_df.columns:
         xaxis_rangeslider_visible=False,
     )
     
-
-
     # Candlestick Y-axis (force to match strike range)
     fig.update_yaxes(title_text="Price / Strike", range=[y_min, y_max], row=1, col=1)
     
@@ -233,15 +228,16 @@ if not options_df.empty and "gamma" in options_df.columns:
     fig.update_xaxes(title_text="Gamma Exposure", row=1, col=2)
     fig.update_xaxes(title_text="Open Interest", row=1, col=3)
     
-    # Horizontal dashed line for latest price, on GEX (col 2) and OI (col 3)
+    # Horizontal lines for current price and zero gamma strike
     for col in [2, 3]:
+        # --- Current Price Line (black dashed) ---
         fig.add_shape(
             type="line",
-            x0=0, x1=1,  # full subplot width
+            x0=0, x1=1,
             y0=current_price, y1=current_price,
             xref=f"x{col} domain",
             yref=f"y{col}",
-            line=dict(color="black", width=1.5, dash="dash"),
+            line=dict(color="black", width=2, dash="dash"),
         )
     
         fig.add_annotation(
@@ -251,10 +247,14 @@ if not options_df.empty and "gamma" in options_df.columns:
             yref=f"y{col}",
             text=f"${current_price:.2f}",
             showarrow=False,
-            font=dict(color="black", size=10),
+            font=dict(color="black", size=16),
             xanchor="left",
             yanchor="bottom"
         )
 
+
     # 🚀 Display chart
     st.plotly_chart(fig, use_container_width=True)
+    
+with st.expander('Raw Data'):
+    st.dataframe(options_df)
