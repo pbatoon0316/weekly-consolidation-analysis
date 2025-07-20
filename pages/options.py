@@ -119,7 +119,7 @@ if symbol and selected_expirations:
 if not options_df.empty and "gamma" in options_df.columns:
     
     # Step 1: Calculate GEX
-    options_df["gex"] = options_df["gamma"] * options_df["oi"] * 100
+    options_df["gex"] = (options_df["gamma"] * options_df["oi"] * 100 * underlying_price) / 1000000
     agg = options_df.groupby("strike")[["oi", "gex"]].sum().reset_index()
     agg = agg.sort_values("strike", ascending=True)
     call_gex = options_df.loc[options_df["type"] == "call", "gex"].sum()
@@ -145,7 +145,7 @@ if not options_df.empty and "gamma" in options_df.columns:
     if isinstance(price_data.columns, pd.MultiIndex):
         price_data = price_data.xs(symbol, axis=1, level=1)
 
-    st.sidebar.metric('Net Gamma Exposure', value=f'${round(net_gex,2)}')
+    st.sidebar.metric('Net Gamma Exposure', value=f'${round(net_gex,2)} M')
 
     
     # Step 3: Create composite Plotly figure
@@ -154,7 +154,7 @@ if not options_df.empty and "gamma" in options_df.columns:
         column_widths=[0.6, 0.2, 0.2],
         shared_yaxes=False,
         horizontal_spacing=0.03,
-        subplot_titles=(f"{symbol} OHLC", "Gamma Exposure", "Open Interest"),
+        subplot_titles=(f"{symbol} OHLC", "Gamma Exposure ($M)", "Open Interest"),
         specs=[[{"type": "xy"}, {"type": "xy"}, {"type": "xy"}]]
     )
     
@@ -179,7 +179,7 @@ if not options_df.empty and "gamma" in options_df.columns:
             orientation="h",
             marker_color="orange",
             name="GEX",
-            hovertemplate="Strike: %{y}<br>GEX: %{customdata}",
+            hovertemplate="Strike: %{y}<br>GEX: $%{customdata} M",
             customdata=agg["gex"].abs().round(1)
         ),
         row=1, col=2
@@ -225,7 +225,7 @@ if not options_df.empty and "gamma" in options_df.columns:
     fig.update_yaxes(title_text="Strike", range=[y_min, y_max], side="right", row=1, col=3)
 
     
-    fig.update_xaxes(title_text="Gamma Exposure", row=1, col=2)
+    fig.update_xaxes(title_text="Gamma Exposure ($M)", row=1, col=2)
     fig.update_xaxes(title_text="Open Interest", row=1, col=3)
     
     # Horizontal lines for current price and zero gamma strike
