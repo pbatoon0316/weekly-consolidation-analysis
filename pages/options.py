@@ -4,8 +4,8 @@ import pandas as pd
 import time
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from py_vollib.black.greeks.analytical import gamma as bsm_gamma
-
+from math import log, sqrt, exp
+from scipy.stats import norm
 
 st.set_page_config(page_title="Options GEX Dashboard", layout="wide")
 
@@ -78,7 +78,7 @@ def get_options_chain(_ticker, expirations):
 
 
     
-# calculate gamma
+# Compute second-order greeks --- Gamma and Vanna
 sr1_close = yf.Ticker('SR1=F').info['previousClose'] 
 r = (100 - sr1_close) / 100
 
@@ -86,14 +86,32 @@ def compute_gamma(row, S, r):
     try:
         K = float(row['strike'])
         sigma = float(row['impliedVolatility'])
+        T = max((pd.to_datetime(row['expiration']) - pd.Timestamp.now()).total_seconds() / (365 * 24 * 60 * 60), 1e-6)
 
         if sigma <= 0 or pd.isna(sigma):
             return 0.0
 
-        T = max((pd.to_datetime(row['expiration']) - pd.Timestamp.now()).total_seconds() / (365 * 24 * 60 * 60), 1e-6)
-        option_type = 'c' if row['type'] == 'call' else 'p'
+        d1 = (log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * sqrt(T))
+        gamma = norm.pdf(d1) / (S * sigma * sqrt(T))
 
-        return bsm_gamma(option_type, S, K, T, r, sigma)
+        return gamma
+
+    except Exception:
+        return 0.0
+    
+def compute_vanna(row, S, r):
+    try:
+        K = float(row['strike'])
+        sigma = float(row['impliedVolatility'])
+        T = max((pd.to_datetime(row['expiration']) - pd.Timestamp.now()).total_seconds() / (365 * 24 * 60 * 60), 1e-6)
+
+        if sigma <= 0 or pd.isna(sigma):
+            return 0.0
+
+        d1 = (log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * sqrt(T))
+        vanna = -d1 * norm.pdf(d1) * T / sigma
+
+        return vanna
 
     except Exception:
         return 0.0
@@ -103,10 +121,10 @@ def compute_gamma(row, S, r):
 if symbol and selected_expirations:
     options_df = get_options_chain(_ticker=ticker, expirations=selected_expirations)
     
-    # Add underlying price for gamma calc
+    # Add underlying price for gamma and vanna calc
     underlying_price = ticker.history(period="1d")['Close'].iloc[-1]
     options_df["gamma"] = options_df.apply(lambda row: compute_gamma(row, underlying_price, r), axis=1)
-
+    options_df["vanna"] = options_df.apply(lambda row: compute_vanna(row, underlying_price, r), axis=1)
 
     if options_df.empty:
         st.sidebar.warning("No options data found for selected expirations.")
@@ -116,26 +134,35 @@ if symbol and selected_expirations:
 
 
 # Only run if gamma column exists
-if not options_df.empty and "gamma" in options_df.columns:
+if not options_df.empty and "gamma" or "vanna" in options_df.columns:
     
-    # Step 1: Calculate GEX
-    options_df["gex"] = (options_df["gamma"] * options_df["oi"] * 100 * underlying_price) / 1000000
-    agg = options_df.groupby("strike")[["oi", "gex"]].sum().reset_index()
-    agg = agg.sort_values("strike", ascending=True)
+    # Step 1a: Calculate GEX
+    options_df["gex"] = (options_df["gamma"] * options_df["oi"] * 100 * underlying_price *
+                         options_df["type"].map({"call": 1, "put": -1})) # map({"call": 1, "put": -1}) adds directionality
+    options_df["gex"] = options_df["gex"] / 1000000 
+    gex_agg = options_df.groupby("strike")[["gex"]].sum().reset_index()
+    gex_agg = gex_agg.sort_values("strike", ascending=True)
     call_gex = options_df.loc[options_df["type"] == "call", "gex"].sum()
     put_gex  = options_df.loc[options_df["type"] == "put", "gex"].sum()
     net_gex  = call_gex - put_gex
     
-    # Calculate cumulative GEX by strike to find the "zero gamma" flip point
-    cumulative = agg.sort_values("strike").copy()
+    ## Calculate cumulative GEX by strike to find the "zero gamma" flip point
+    cumulative = gex_agg.sort_values("strike").copy()
     cumulative["cum_gex"] = cumulative["gex"].cumsum()
     
-    # Find the strike where GEX crosses zero (closest to zero)
+    ## Find the strike where GEX crosses zero (closest to zero)
     zero_cross_idx = cumulative["cum_gex"].abs().idxmin()
     zero_gamma_strike = cumulative.loc[zero_cross_idx, "strike"]
 
+    # Step 1b: Calculate VEX
+    options_df["vex"] = (options_df["vanna"] * options_df["oi"] * 100 * underlying_price) / 1000000
+    vex_agg = options_df.groupby("strike")[["oi", "vex"]].sum().reset_index()
+    vex_agg = vex_agg.sort_values("strike", ascending=True)
+    call_vex = options_df.loc[options_df["type"] == "call", "vex"].sum()
+    put_vex  = options_df.loc[options_df["type"] == "put", "vex"].sum()
+    net_vex  = call_vex - put_vex
 
-    # Step 2: Download price data & flatten multilevel columns
+    ## Step 2: Download price data & flatten multilevel columns
     period_selection = st.sidebar.selectbox(label='Time Period', options=['5d','2wk','1mo','2mo','3mo','6mo','1yr'], index=3)
     price_data = yf.download(symbol, period=period_selection, interval="1d")
     price_data.dropna(inplace=True)
@@ -154,7 +181,7 @@ if not options_df.empty and "gamma" in options_df.columns:
         column_widths=[0.6, 0.2, 0.2],
         shared_yaxes=False,
         horizontal_spacing=0.03,
-        subplot_titles=(f"{symbol} OHLC", "Gamma Exposure ($M)", "Open Interest"),
+        subplot_titles=(f"{symbol} OHLC", "Gamma Exposure ($M)", "Vanna Exposure ($M)"),
         specs=[[{"type": "xy"}, {"type": "xy"}, {"type": "xy"}]]
     )
     
@@ -174,28 +201,28 @@ if not options_df.empty and "gamma" in options_df.columns:
     # Plot 2: Gamma Exposure
     fig.add_trace(
         go.Bar(
-            x=1*agg["gex"],
-            y=agg["strike"],
+            x=gex_agg["gex"],
+            y=gex_agg["strike"],
             orientation="h",
             marker_color="orange",
             name="GEX",
             hovertemplate="Strike: %{y}<br>GEX: $%{customdata} M",
-            customdata=agg["gex"].abs().round(1)
+            customdata=gex_agg["gex"].abs().round(1)
         ),
         row=1, col=2
     )
            
     
-    # Plot 3: Open Interest
+    # Plot 3: Vanna Exposure
     fig.add_trace(
         go.Bar(
-            x=1*agg["oi"],
-            y=agg["strike"],
+            x=vex_agg["vex"],
+            y=vex_agg["strike"],
             orientation="h",
-            marker_color="blue",
-            name="OI",
-            hovertemplate="Strike: %{y}<br>OI: %{customdata}",
-            customdata=agg["oi"].abs().round(1)
+            marker_color="purple",
+            name="VEX",
+            hovertemplate="Strike: %{y}<br>VEX: $%{customdata} M",
+            customdata=vex_agg["vex"].abs().round(2)
         ),
         row=1, col=3
     )
@@ -226,7 +253,7 @@ if not options_df.empty and "gamma" in options_df.columns:
 
     
     fig.update_xaxes(title_text="Gamma Exposure ($M)", row=1, col=2)
-    fig.update_xaxes(title_text="Open Interest", row=1, col=3)
+    fig.update_xaxes(title_text="Vanna Exposure ($M)", row=1, col=3)
     
     # Horizontal lines for current price and zero gamma strike
     for col in [2, 3]:
