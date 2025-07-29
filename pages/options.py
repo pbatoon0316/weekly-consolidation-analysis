@@ -79,7 +79,7 @@ def get_options_chain(_ticker, expirations):
 
     
 # Compute second-order greeks --- Gamma and Vanna
-sr1_close = yf.Ticker('SR1=F').info['previousClose'] 
+sr1_close = yf.Ticker('SR1=F').info['previousClose']  # Uses SR3 futures as an estimate for risk free rate
 r = (100 - sr1_close) / 100
 
 def compute_gamma(row, S, r):
@@ -134,8 +134,7 @@ if symbol and selected_expirations:
 
 
 # Only run if gamma column exists
-if not options_df.empty and "gamma" or "vanna" in options_df.columns:
-    
+try: 
     # Step 1a: Calculate GEX
     options_df["gex"] = (options_df["gamma"] * options_df["oi"] * 100 * underlying_price *
                          options_df["type"].map({"call": 1, "put": -1})) # map({"call": 1, "put": -1}) adds directionality
@@ -144,7 +143,7 @@ if not options_df.empty and "gamma" or "vanna" in options_df.columns:
     gex_agg = gex_agg.sort_values("strike", ascending=True)
     call_gex = options_df.loc[options_df["type"] == "call", "gex"].sum()
     put_gex  = options_df.loc[options_df["type"] == "put", "gex"].sum()
-    net_gex  = call_gex - put_gex
+    net_gex  = call_gex + put_gex
     
     ## Calculate cumulative GEX by strike to find the "zero gamma" flip point
     cumulative = gex_agg.sort_values("strike").copy()
@@ -160,10 +159,10 @@ if not options_df.empty and "gamma" or "vanna" in options_df.columns:
     vex_agg = vex_agg.sort_values("strike", ascending=True)
     call_vex = options_df.loc[options_df["type"] == "call", "vex"].sum()
     put_vex  = options_df.loc[options_df["type"] == "put", "vex"].sum()
-    net_vex  = call_vex - put_vex
+    net_vex  = call_vex + put_vex
 
     ## Step 2: Download price data & flatten multilevel columns
-    period_selection = st.sidebar.selectbox(label='Time Period', options=['5d','2wk','1mo','2mo','3mo','6mo','1yr'], index=3)
+    period_selection = st.sidebar.selectbox(label='Time Period', options=['5d','2wk','1mo','2mo','3mo','6mo','1yr'], index=4)
     price_data = yf.download(symbol, period=period_selection, interval="1d")
     price_data.dropna(inplace=True)
     current_price = underlying_price
@@ -173,8 +172,11 @@ if not options_df.empty and "gamma" or "vanna" in options_df.columns:
         price_data = price_data.xs(symbol, axis=1, level=1)
 
     st.sidebar.metric('Net Gamma Exposure', value=f'${round(net_gex,2)} M')
+    st.sidebar.metric('Net Vanna Exposure', value=f'${round(net_vex,2)} M')
+except:
+    st.warning("Unable to calculate options greeks.")
 
-    
+try:
     # Step 3: Create composite Plotly figure
     fig = make_subplots(
         rows=1, cols=3,
@@ -279,9 +281,9 @@ if not options_df.empty and "gamma" or "vanna" in options_df.columns:
             yanchor="bottom"
         )
 
-
-    # 🚀 Display chart
+    # Display chart & data table
     st.plotly_chart(fig, use_container_width=True)
-    
-with st.expander('Raw Data'):
-    st.dataframe(options_df)
+    with st.expander('Raw Data'):
+        st.dataframe(options_df)
+except:
+    st.warning("No options data found for selected expirations.")
