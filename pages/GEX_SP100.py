@@ -1,3 +1,6 @@
+Here’s your updated `GEX_SP100.py` with GEX and VEX normalized to **“$M per 1% move”**, both in the calculations and in the labels. 
+
+```python
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -103,8 +106,8 @@ def compute_vanna(row, S: float, r: float) -> float:
 @st.cache_data(ttl=1800, show_spinner=False)
 def compute_ticker_gex_vex(symbol: str) -> dict | None:
     """
-    Compute GEX/VEX aggregates for a single ticker (nearest expiration).
-    Returns a dict with summary metrics or None if no usable data.
+    Compute GEX/VEX aggregates for a single ticker (nearest expiration),
+    normalized to $M per 1% move in the underlying.
     """
     try:
         tkr = yf.Ticker(symbol)
@@ -186,7 +189,7 @@ def compute_ticker_gex_vex(symbol: str) -> dict | None:
             lambda row: compute_vanna(row, underlying_price, r), axis=1
         )
 
-        # 6) GEX and VEX per contract, in $M
+        # 6) GEX and VEX per contract, in $M per $1 move
         direction = opt_df["type"].map({"call": 1, "put": -1})
         opt_df["gex"] = (
             opt_df["gamma"] * opt_df["oi"] * 100.0 * underlying_price * direction
@@ -196,15 +199,20 @@ def compute_ticker_gex_vex(symbol: str) -> dict | None:
             opt_df["vanna"] * opt_df["oi"] * 100.0 * underlying_price
         ) / 1_000_000.0
 
-        # 7) Aggregations (ticker-level)
+        # 6b) Normalize to $M per 1% move (platform-style units)
+        scale = 0.01 * underlying_price  # 1% move in underlying
+        opt_df["gex_1pct"] = opt_df["gex"] * scale
+        opt_df["vex_1pct"] = opt_df["vex"] * scale
+
+        # 7) Aggregations (ticker-level, per 1% move)
         call_oi = float(opt_df.loc[opt_df["type"] == "call", "oi"].sum())
         put_oi = float(opt_df.loc[opt_df["type"] == "put", "oi"].sum())
         total_oi = call_oi + put_oi
         if total_oi == 0:
             return None
 
-        net_gex = float(opt_df["gex"].sum())
-        net_vex = float(opt_df["vex"].sum())
+        net_gex = float(opt_df["gex_1pct"].sum())  # $M per 1% move
+        net_vex = float(opt_df["vex_1pct"].sum())  # $M per 1% move
         put_call_ratio = (put_oi / call_oi) if call_oi > 0 else None
 
         # 8) Company name (optional; 1 extra ping per ticker)
@@ -221,8 +229,8 @@ def compute_ticker_gex_vex(symbol: str) -> dict | None:
             "Put_OI": put_oi,
             "Total_OI": total_oi,
             "PutCall": put_call_ratio,
-            "GEX_M": net_gex,
-            "VEX_M": net_vex,
+            "GEX_M": net_gex,  # $M per 1% move
+            "VEX_M": net_vex,  # $M per 1% move
         }
 
     except Exception:
@@ -246,13 +254,13 @@ def vex_vs_gex_scatter(df: pd.DataFrame):
             "PutCall": ".2f",
         },
         labels={
-            "GEX_M": "Net GEX ($M)",
-            "VEX_M": "Net VEX ($M)",
+            "GEX_M": "Net GEX ($M per 1% move)",
+            "VEX_M": "Net VEX ($M per 1% move)",
         },
     )
     fig.update_layout(
-        xaxis_title="Net GEX ($M)",
-        yaxis_title="Net VEX ($M)",
+        xaxis_title="Net GEX ($M per 1% move)",
+        yaxis_title="Net VEX ($M per 1% move)",
         legend_title="",
     )
     return fig
@@ -300,8 +308,8 @@ else:
             # Prepare a cleaner display table
             display_df = screener_df.copy()
             display_df["Put/Call"] = display_df["PutCall"]
-            display_df["GEX ($M)"] = display_df["GEX_M"]
-            display_df["VEX ($M)"] = display_df["VEX_M"]
+            display_df["GEX ($M per 1% move)"] = display_df["GEX_M"]
+            display_df["VEX ($M per 1% move)"] = display_df["VEX_M"]
             display_df = display_df[
                 [
                     "Ticker",
@@ -310,8 +318,8 @@ else:
                     "Put_OI",
                     "Total_OI",
                     "Put/Call",
-                    "GEX ($M)",
-                    "VEX ($M)",
+                    "GEX ($M per 1% move)",
+                    "VEX ($M per 1% move)",
                 ]
             ]
 
@@ -319,10 +327,11 @@ else:
             col1, col2 = st.columns(2, gap="medium")
 
             with col1:
-                st.subheader("Ticker-level GEX/VEX (Nearest Expiration)")
+                st.subheader("Ticker-level GEX/VEX (Nearest Expiration, per 1% move)")
                 st.dataframe(display_df, use_container_width=True)
 
             with col2:
                 st.subheader("VEX vs GEX (bubble size = total contracts)")
                 fig = vex_vs_gex_scatter(screener_df)
                 st.plotly_chart(fig, use_container_width=True)
+```
