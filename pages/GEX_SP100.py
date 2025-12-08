@@ -331,4 +331,3 @@ else:
                 st.subheader("VEX vs GEX (bubble size = total contracts)")
                 fig = vex_vs_gex_scatter(screener_df)
                 st.plotly_chart(fig, use_container_width=True)
-```
