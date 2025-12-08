@@ -1,6 +1,3 @@
-Here’s your updated `GEX_SP100.py` with GEX and VEX normalized to **“$M per 1% move”**, both in the calculations and in the labels. 
-
-```python
 import streamlit as st
 import yfinance as yf
 import pandas as pd
