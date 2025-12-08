@@ -6,18 +6,13 @@ from scipy.stats import norm
 import plotly.express as px
 
 # ------------------------------------------------------
-# Config / Title
+# Sidebar config (title removed per request)
 # ------------------------------------------------------
-st.title("SP100 Options GEX/VEX Screener (Nearest Expiration)")
-
 st.sidebar.header("⚙️ Screener Settings")
 
 # ------------------------------------------------------
-# 1. Universe definition (you provide this list)
+# 1. Universe definition (from metadata CSV)
 # ------------------------------------------------------
-# TODO: Replace this placeholder with your real SP100 list.
-# Example: SP100_TICKERS = ["AAPL", "MSFT", "GOOGL", ...]
-
 def clean_metadata(metadata_csv):
     metadata = pd.read_csv(metadata_csv)
     metadata.dropna(subset=['Market Cap'], inplace=True)
@@ -43,7 +38,6 @@ st.sidebar.write(f"Universe size: {len(SP100_TICKERS)} tickers")
 
 # ------------------------------------------------------
 # 2. Shared Greeks: risk-free rate, Gamma, Vanna
-#    (mirrors your existing options page)
 # ------------------------------------------------------
 # Uses SR1 futures as an estimate for the risk-free rate
 try:
@@ -102,221 +96,140 @@ def compute_vanna(row, S: float, r: float) -> float:
         return 0.0
 
 # ------------------------------------------------------
-# 3. Core screener logic (heavily cached to reduce pings)
+# 3. Core screener logic
+#    - Per-ticker function is cached
+#    - Outer loop can report active ticker
 # ------------------------------------------------------
 @st.cache_data(ttl=1800, show_spinner=False)
-def run_gex_vex_screener(tickers: tuple[str, ...]) -> pd.DataFrame:
+def compute_ticker_gex_vex(symbol: str) -> dict | None:
     """
-    For each ticker:
-      - Find nearest expiration
-      - Pull option chain (calls + puts)
-      - Compute per-contract gamma, vanna
-      - Compute GEX, VEX in $M
-      - Aggregate to ticker-level:
-          Call OI, Put OI, Total OI, Put/Call, Net GEX, Net VEX
-    Returns a DataFrame with one row per ticker.
+    Compute GEX/VEX aggregates for a single ticker (nearest expiration).
+    Returns a dict with summary metrics or None if no usable data.
     """
-    rows = []
+    try:
+        tkr = yf.Ticker(symbol)
 
-    for symbol in tickers:
+        # 1) Nearest expiration
+        expirations = tkr.options
+        if not expirations:
+            return None
+
+        expirations_sorted = sorted(
+            expirations, key=lambda d: pd.to_datetime(d)
+        )
+        nearest_exp = expirations_sorted[0]
+
+        # 2) Option chain for nearest expiration
+        chain = tkr.option_chain(nearest_exp)
+        calls_raw = chain.calls
+        puts_raw = chain.puts
+
+        if (calls_raw is None or calls_raw.empty) and (
+            puts_raw is None or puts_raw.empty
+        ):
+            return None
+
+        # 3) Underlying price (avoid full history if possible)
+        underlying_price = None
         try:
-            tkr = yf.Ticker(symbol)
-
-            # 1) Nearest expiration
-            expirations = tkr.options
-            if not expirations:
-                continue
-
-            expirations_sorted = sorted(
-                expirations, key=lambda d: pd.to_datetime(d)
-            )
-            nearest_exp = expirations_sorted[0]
-
-            # 2) Option chain for nearest expiration
-            chain = tkr.option_chain(nearest_exp)
-            calls_raw = chain.calls
-            puts_raw = chain.puts
-
-            if (calls_raw is None or calls_raw.empty) and (
-                puts_raw is None or puts_raw.empty
-            ):
-                continue
-
-            # 3) Underlying price (cheap-ish; avoids full history if possible)
-            underlying_price = None
-            try:
-                fast_info = getattr(tkr, "fast_info", None)
-                if fast_info is not None:
-                    underlying_price = fast_info.get("last_price", None)
-            except Exception:
-                underlying_price = None
-
-            if underlying_price is None or pd.isna(underlying_price) or underlying_price <= 0:
-                hist = tkr.history(period="1d")
-                if hist.empty:
-                    continue
-                underlying_price = float(hist["Close"].iloc[-1])
-
-            # 4) Normalize calls/puts dataframes
-            def _prep(df: pd.DataFrame, opt_type: str) -> pd.DataFrame:
-                if df is None or df.empty:
-                    return pd.DataFrame()
-
-                cols = ["strike", "openInterest", "impliedVolatility"]
-                # keep only available columns
-                cols = [c for c in cols if c in df.columns]
-                df = df[cols].copy()
-
-                if "openInterest" in df.columns:
-                    df.rename(columns={"openInterest": "oi"}, inplace=True)
-
-                df["type"] = opt_type
-                df["expiration"] = nearest_exp
-
-                # We only care about contracts with open interest
-                if "oi" in df.columns:
-                    df = df[df["oi"] > 0]
-
-                return df
-
-            calls = _prep(calls_raw, "call")
-            puts = _prep(puts_raw, "put")
-
-            if calls.empty and puts.empty:
-                continue
-
-            opt_df = pd.concat([calls, puts], ignore_index=True)
-
-            # Ensure required columns exist
-            required = {"strike", "oi", "impliedVolatility", "type", "expiration"}
-            if not required.issubset(opt_df.columns):
-                continue
-
-            # 5) Greeks for each option
-            opt_df["gamma"] = opt_df.apply(
-                lambda row: compute_gamma(row, underlying_price, r), axis=1
-            )
-            opt_df["vanna"] = opt_df.apply(
-                lambda row: compute_vanna(row, underlying_price, r), axis=1
-            )
-
-            # 6) GEX and VEX per contract, in $M
-            # GEX = gamma * OI * 100 * S * direction(call +, put -)
-            direction = opt_df["type"].map({"call": 1, "put": -1})
-            opt_df["gex"] = (
-                opt_df["gamma"] * opt_df["oi"] * 100.0 * underlying_price * direction
-            ) / 1_000_000.0
-
-            # VEX = vanna * OI * 100 * S
-            opt_df["vex"] = (
-                opt_df["vanna"] * opt_df["oi"] * 100.0 * underlying_price
-            ) / 1_000_000.0
-
-            # 7) Aggregations (ticker-level)
-            call_oi = float(opt_df.loc[opt_df["type"] == "call", "oi"].sum())
-            put_oi = float(opt_df.loc[opt_df["type"] == "put", "oi"].sum())
-            total_oi = call_oi + put_oi
-            if total_oi == 0:
-                continue
-
-            net_gex = float(opt_df["gex"].sum())
-            net_vex = float(opt_df["vex"].sum())
-            put_call_ratio = (put_oi / call_oi) if call_oi > 0 else None
-
-            # 8) Company name (optional; 1 extra ping per ticker)
-            try:
-                info = tkr.info or {}
-                name = info.get("shortName", symbol)
-            except Exception:
-                name = symbol
-
-            rows.append(
-                {
-                    "Ticker": symbol,
-                    "Name": name,
-                    "Call_OI": call_oi,
-                    "Put_OI": put_oi,
-                    "Total_OI": total_oi,
-                    "PutCall": put_call_ratio,
-                    "GEX_M": net_gex,
-                    "VEX_M": net_vex,
-                }
-            )
-
+            fast_info = getattr(tkr, "fast_info", None)
+            if fast_info is not None:
+                underlying_price = fast_info.get("last_price", None)
         except Exception:
-            # Skip tickers that blow up
-            continue
+            underlying_price = None
 
-    if not rows:
-        return pd.DataFrame()
+        if underlying_price is None or pd.isna(underlying_price) or underlying_price <= 0:
+            hist = tkr.history(period="1d")
+            if hist.empty:
+                return None
+            underlying_price = float(hist["Close"].iloc[-1])
 
-    df = pd.DataFrame(rows)
+        # 4) Normalize calls/puts dataframes
+        def _prep(df: pd.DataFrame, opt_type: str) -> pd.DataFrame:
+            if df is None or df.empty:
+                return pd.DataFrame()
 
-    # Sort by GEX descending (as requested)
-    df.sort_values("GEX_M", ascending=False, inplace=True)
-    df.reset_index(drop=True, inplace=True)
-    return df
+            cols = ["strike", "openInterest", "impliedVolatility"]
+            cols = [c for c in cols if c in df.columns]
+            df = df[cols].copy()
+
+            if "openInterest" in df.columns:
+                df.rename(columns={"openInterest": "oi"}, inplace=True)
+
+            df["type"] = opt_type
+            df["expiration"] = nearest_exp
+
+            # We only care about contracts with open interest
+            if "oi" in df.columns:
+                df = df[df["oi"] > 0]
+
+            return df
+
+        calls = _prep(calls_raw, "call")
+        puts = _prep(puts_raw, "put")
+
+        if calls.empty and puts.empty:
+            return None
+
+        opt_df = pd.concat([calls, puts], ignore_index=True)
+
+        # Ensure required columns exist
+        required = {"strike", "oi", "impliedVolatility", "type", "expiration"}
+        if not required.issubset(opt_df.columns):
+            return None
+
+        # 5) Greeks for each option
+        opt_df["gamma"] = opt_df.apply(
+            lambda row: compute_gamma(row, underlying_price, r), axis=1
+        )
+        opt_df["vanna"] = opt_df.apply(
+            lambda row: compute_vanna(row, underlying_price, r), axis=1
+        )
+
+        # 6) GEX and VEX per contract, in $M
+        direction = opt_df["type"].map({"call": 1, "put": -1})
+        opt_df["gex"] = (
+            opt_df["gamma"] * opt_df["oi"] * 100.0 * underlying_price * direction
+        ) / 1_000_000.0
+
+        opt_df["vex"] = (
+            opt_df["vanna"] * opt_df["oi"] * 100.0 * underlying_price
+        ) / 1_000_000.0
+
+        # 7) Aggregations (ticker-level)
+        call_oi = float(opt_df.loc[opt_df["type"] == "call", "oi"].sum())
+        put_oi = float(opt_df.loc[opt_df["type"] == "put", "oi"].sum())
+        total_oi = call_oi + put_oi
+        if total_oi == 0:
+            return None
+
+        net_gex = float(opt_df["gex"].sum())
+        net_vex = float(opt_df["vex"].sum())
+        put_call_ratio = (put_oi / call_oi) if call_oi > 0 else None
+
+        # 8) Company name (optional; 1 extra ping per ticker)
+        try:
+            info = tkr.info or {}
+            name = info.get("shortName", symbol)
+        except Exception:
+            name = symbol
+
+        return {
+            "Ticker": symbol,
+            "Name": name,
+            "Call_OI": call_oi,
+            "Put_OI": put_oi,
+            "Total_OI": total_oi,
+            "PutCall": put_call_ratio,
+            "GEX_M": net_gex,
+            "VEX_M": net_vex,
+        }
+
+    except Exception:
+        return None
 
 # ------------------------------------------------------
-# 4. Styling: color GEX (green→red), |VEX| (green→red)
-# ------------------------------------------------------
-def styled_screener_table(df: pd.DataFrame):
-    working = df.copy()
-
-    # Pretty columns for display
-    working["Put/Call"] = working["PutCall"]
-    working["GEX ($M)"] = working["GEX_M"]
-    working["VEX ($M)"] = working["VEX_M"]
-    working["abs_vex"] = working["VEX_M"].abs()
-
-    display_cols = [
-        "Ticker",
-        "Name",
-        "Call_OI",
-        "Put_OI",
-        "Put/Call",
-        "GEX ($M)",
-        "VEX ($M)",
-        "abs_vex",  # used only for coloring
-    ]
-
-    working = working[display_cols]
-
-    max_abs_gex = float(working["GEX ($M)"].abs().max() or 1.0)
-    max_abs_vex = float(working["abs_vex"].max() or 1.0)
-
-    styler = (
-        working.style
-        # GEX: green for high positive, red for large negative
-        .background_gradient(
-            cmap="RdYlGn",
-            subset=["GEX ($M)"],
-            vmin=-max_abs_gex,
-            vmax=max_abs_gex,
-        )
-        # |VEX|: lowest abs → green, highest abs → red
-        .background_gradient(
-            cmap="RdYlGn_r",
-            subset=["abs_vex"],
-            vmin=0,
-            vmax=max_abs_vex,
-        )
-        .hide(axis="columns", subset=["abs_vex"])
-        .format(
-            {
-                "Call_OI": "{:,.0f}",
-                "Put_OI": "{:,.0f}",
-                "Put/Call": "{:.2f}",
-                "GEX ($M)": "{:.2f}",
-                "VEX ($M)": "{:.2f}",
-            }
-        )
-    )
-
-    return styler
-
-# ------------------------------------------------------
-# 5. Scatter: VEX vs GEX, bubble size = total contracts
+# 4. Scatter: VEX vs GEX, bubble size = total contracts
 # ------------------------------------------------------
 def vex_vs_gex_scatter(df: pd.DataFrame):
     fig = px.scatter(
@@ -345,30 +258,71 @@ def vex_vs_gex_scatter(df: pd.DataFrame):
     return fig
 
 # ------------------------------------------------------
-# 6. UI wiring
+# 5. UI wiring
+#    - No main title
+#    - Report active ticker
+#    - Simple dataframe (no Styler, no matplotlib)
+#    - 2-column layout: left = table, right = Plotly scatter
 # ------------------------------------------------------
 if not SP100_TICKERS:
     st.warning(
-        "Please edit `SP100_TICKERS` in `options_screener.py` to include your SP100 universe."
+        "No tickers found in SP100_TICKERS / metadata. Please verify the metadata file and ticker slice."
     )
 else:
     run_btn = st.sidebar.button("Run SP100 GEX/VEX Screener")
 
     if run_btn:
-        with st.spinner("Running GEX/VEX screener on nearest expirations..."):
-            universe = tuple(sorted(set(SP100_TICKERS)))
-            screener_df = run_gex_vex_screener(universe)
+        universe = tuple(sorted(set(SP100_TICKERS)))
+        n = len(universe)
 
-        if screener_df.empty:
+        status = st.empty()  # Shows actively processed ticker
+
+        with st.spinner("Running GEX/VEX screener on nearest expirations..."):
+            results = []
+            for i, symbol in enumerate(universe, start=1):
+                # Report which ticker is actively being processed
+                status.write(f"Processing {symbol} ({i}/{n})")
+                row = compute_ticker_gex_vex(symbol)
+                if row is not None:
+                    results.append(row)
+
+        status.write("Processing complete.")
+
+        if not results:
             st.warning("No options data returned for the current universe.")
         else:
-            st.subheader("Ticker-level GEX/VEX (Nearest Expiration)")
+            screener_df = (
+                pd.DataFrame(results)
+                .sort_values("GEX_M", ascending=False)
+                .reset_index(drop=True)
+            )
 
-            # First output: colored table
-            styled = styled_screener_table(screener_df)
-            st.dataframe(styled, use_container_width=True)
+            # Prepare a cleaner display table
+            display_df = screener_df.copy()
+            display_df["Put/Call"] = display_df["PutCall"]
+            display_df["GEX ($M)"] = display_df["GEX_M"]
+            display_df["VEX ($M)"] = display_df["VEX_M"]
+            display_df = display_df[
+                [
+                    "Ticker",
+                    "Name",
+                    "Call_OI",
+                    "Put_OI",
+                    "Total_OI",
+                    "Put/Call",
+                    "GEX ($M)",
+                    "VEX ($M)",
+                ]
+            ]
 
-            # Second output: VEX vs GEX scatter
-            st.subheader("VEX vs GEX (bubble size = total contracts)")
-            fig = vex_vs_gex_scatter(screener_df)
-            st.plotly_chart(fig, use_container_width=True)
+            # 2-column layout: left = dataframe, right = scatter plot
+            col1, col2 = st.columns(2, gap="medium")
+
+            with col1:
+                st.subheader("Ticker-level GEX/VEX (Nearest Expiration)")
+                st.dataframe(display_df, use_container_width=True)
+
+            with col2:
+                st.subheader("VEX vs GEX (bubble size = total contracts)")
+                fig = vex_vs_gex_scatter(screener_df)
+                st.plotly_chart(fig, use_container_width=True)
