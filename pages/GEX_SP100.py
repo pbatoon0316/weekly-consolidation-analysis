@@ -321,7 +321,7 @@ else:
             ]
 
             # 2-column layout: left = dataframe, right = scatter plot
-            col1, col2 = st.columns(2, gap="medium")
+            col1, col2 = st.columns([2,1], gap="small")
 
             with col1:
                 st.subheader("Ticker-level GEX/VEX (Nearest Expiration, per 1% move)")
