@@ -358,7 +358,7 @@ if screener_df is not None and not screener_df.empty:
         st.dataframe(display_df, use_container_width=True)
 
     with col2:
-        st.subheader("VEX vs GEX (bubble size = total contracts)")
+        st.subheader("VEX vs GEX")
 
         # Reserve vertical order: plot first, dropdown second
         plot_placeholder = st.empty()
