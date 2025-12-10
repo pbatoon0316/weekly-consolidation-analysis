@@ -235,12 +235,14 @@ def compute_ticker_gex_vex(symbol: str) -> dict | None:
 
 # ------------------------------------------------------
 # 4. Scatter: VEX vs GEX, bubble size = total contracts
+#     (supports toggle between raw and MC-normalized metrics)
 # ------------------------------------------------------
-def vex_vs_gex_scatter(df: pd.DataFrame):
+def vex_vs_gex_scatter(df: pd.DataFrame, x_col: str, y_col: str,
+                       x_label: str, y_label: str):
     fig = px.scatter(
         df,
-        x="GEX_M",
-        y="VEX_M",
+        x=x_col,
+        y=y_col,
         size="Total_OI",
         hover_name="Ticker",
         hover_data={
@@ -251,13 +253,13 @@ def vex_vs_gex_scatter(df: pd.DataFrame):
             "PutCall": ".2f",
         },
         labels={
-            "GEX_M": "Net GEX ($M per 1% move)",
-            "VEX_M": "Net VEX ($M per 1% move)",
+            x_col: x_label,
+            y_col: y_label,
         },
     )
     fig.update_layout(
-        xaxis_title="Net GEX ($M per 1% move)",
-        yaxis_title="Net VEX ($M per 1% move)",
+        xaxis_title=x_label,
+        yaxis_title=y_label,
         legend_title="",
     )
     return fig
@@ -268,12 +270,23 @@ def vex_vs_gex_scatter(df: pd.DataFrame):
 #    - Report active ticker
 #    - Simple dataframe (no Styler, no matplotlib)
 #    - 2-column layout: left = table, right = Plotly scatter
+#    - Toggle for scatter basis (raw vs market-cap-normalized)
 # ------------------------------------------------------
 if not SP100_TICKERS:
     st.warning(
         "No tickers found in SP100_TICKERS / metadata. Please verify the metadata file and ticker slice."
     )
 else:
+    # Toggle for scatter plot basis
+    plot_basis = st.sidebar.radio(
+        "Scatter basis",
+        [
+            "Per 1% move (raw GEX/VEX)",
+            "Per 1% per $100M market cap",
+        ],
+        index=0,
+    )
+
     run_btn = st.sidebar.button("Run SP100 GEX/VEX Screener")
 
     if run_btn:
@@ -302,11 +315,33 @@ else:
                 .reset_index(drop=True)
             )
 
-            # Prepare a cleaner display table
+            # --------------------------------------------------
+            # 5a. Merge Market Cap and compute MC-normalized GEX/VEX
+            # --------------------------------------------------
+            mc_df = metadata[["Symbol", "Market Cap"]].rename(
+                columns={"Symbol": "Ticker"}
+            )
+            screener_df = screener_df.merge(mc_df, on="Ticker", how="left")
+
+            # Market Cap in units of $100M
+            mc_100m = screener_df["Market Cap"] / 100_000_000.0
+
+            # Avoid division by zero / missing
+            mc_100m = mc_100m.replace(0, pd.NA)
+
+            screener_df["GEX_MC"] = screener_df["GEX_M"] / mc_100m
+            screener_df["VEX_MC"] = screener_df["VEX_M"] / mc_100m
+
+            # --------------------------------------------------
+            # 5b. Prepare display dataframe with extra columns
+            # --------------------------------------------------
             display_df = screener_df.copy()
             display_df["Put/Call"] = display_df["PutCall"]
             display_df["GEX ($M per 1% move)"] = display_df["GEX_M"]
             display_df["VEX ($M per 1% move)"] = display_df["VEX_M"]
+            display_df["GEX ($M per 1% per $100M MC)"] = display_df["GEX_MC"]
+            display_df["VEX ($M per 1% per $100M MC)"] = display_df["VEX_MC"]
+
             display_df = display_df[
                 [
                     "Ticker",
@@ -317,17 +352,36 @@ else:
                     "Put/Call",
                     "GEX ($M per 1% move)",
                     "VEX ($M per 1% move)",
+                    "GEX ($M per 1% per $100M MC)",
+                    "VEX ($M per 1% per $100M MC)",
                 ]
             ]
 
+            # --------------------------------------------------
+            # 5c. Choose scatter basis based on toggle
+            # --------------------------------------------------
+            if plot_basis == "Per 1% per $100M market cap":
+                x_col = "GEX_MC"
+                y_col = "VEX_MC"
+                x_label = "Net GEX ($M per 1% per $100M MC)"
+                y_label = "Net VEX ($M per 1% per $100M MC)"
+            else:
+                x_col = "GEX_M"
+                y_col = "VEX_M"
+                x_label = "Net GEX ($M per 1% move)"
+                y_label = "Net VEX ($M per 1% move)"
+
             # 2-column layout: left = dataframe, right = scatter plot
-            col1, col2 = st.columns([2,1], gap="small")
+            col1, col2 = st.columns([2, 1], gap="small")
 
             with col1:
-                st.subheader("Ticker-level GEX/VEX (Nearest Expiration, per 1% move)")
+                st.subheader("Ticker-level GEX/VEX (Nearest Expiration)")
                 st.dataframe(display_df, use_container_width=True)
 
             with col2:
                 st.subheader("VEX vs GEX (bubble size = total contracts)")
-                fig = vex_vs_gex_scatter(screener_df)
+                fig = vex_vs_gex_scatter(
+                    screener_df, x_col=x_col, y_col=y_col,
+                    x_label=x_label, y_label=y_label
+                )
                 st.plotly_chart(fig, use_container_width=True)
