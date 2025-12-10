@@ -358,17 +358,25 @@ if screener_df is not None and not screener_df.empty:
         st.dataframe(display_df, use_container_width=True)
 
     with col2:
-        # Decide which basis to use for the plot
-        plot_basis = st.radio(
-            "Scatter basis",
-            [
-                "Per 1% move (raw GEX/VEX)",
-                "Per 1% per $100M market cap",
-            ],
-            index=0,
-            key="plot_basis_toggle",
-        )
+        st.subheader("VEX vs GEX (bubble size = total contracts)")
 
+        # Reserve vertical order: plot first, dropdown second
+        plot_placeholder = st.empty()
+        dropdown_placeholder = st.empty()
+
+        # Dropdown lives *visually* under the plot, but we read its value first
+        with dropdown_placeholder:
+            plot_basis = st.selectbox(
+                "Scatter basis",
+                (
+                    "Per 1% move (raw GEX/VEX)",
+                    "Per 1% per $100M market cap",
+                ),
+                index=0,  # default = raw per 1% move
+                key="plot_basis_toggle",
+            )
+
+        # Decide which basis to use for the plot
         if plot_basis == "Per 1% per $100M market cap":
             x_col = "GEX_MC"
             y_col = "VEX_MC"
@@ -380,11 +388,16 @@ if screener_df is not None and not screener_df.empty:
             x_label = "Net GEX ($M per 1% move)"
             y_label = "Net VEX ($M per 1% move)"
 
-        st.subheader("VEX vs GEX (bubble size = total contracts)")
-        fig = vex_vs_gex_scatter(
-            screener_df, x_col=x_col, y_col=y_col,
-            x_label=x_label, y_label=y_label
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        # Now render the plot into the reserved top placeholder
+        with plot_placeholder:
+            fig = vex_vs_gex_scatter(
+                screener_df,
+                x_col=x_col,
+                y_col=y_col,
+                x_label=x_label,
+                y_label=y_label,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
 else:
     st.info("Click 'Run SP100 GEX/VEX Screener' in the sidebar to generate results.")
