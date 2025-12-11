@@ -98,6 +98,7 @@ def compute_vanna(row, S: float, r: float) -> float:
 # ------------------------------------------------------
 # 3. Core screener logic
 #    - Per-ticker function is cached
+#    - Outer loop can report active ticker
 # ------------------------------------------------------
 @st.cache_data(ttl=1800, show_spinner=False)
 def compute_ticker_gex_vex(symbol: str) -> dict | None:
@@ -186,3 +187,147 @@ def compute_ticker_gex_vex(symbol: str) -> dict | None:
         )
 
         # 6) GEX and VEX per contract, in $M per $1 move
+        direction = opt_df["type"].map({"call": 1, "put": -1})
+        opt_df["gex"] = (
+            opt_df["gamma"] * opt_df["oi"] * 100.0 * underlying_price * direction
+        ) / 1_000_000.0
+
+        opt_df["vex"] = (
+            opt_df["vanna"] * opt_df["oi"] * 100.0 * underlying_price
+        ) / 1_000_000.0
+
+        # 6b) Normalize to $M per 1% move (platform-style units)
+        scale = 0.01 * underlying_price  # 1% move in underlying
+        opt_df["gex_1pct"] = opt_df["gex"] * scale
+        opt_df["vex_1pct"] = opt_df["vex"] * scale
+
+        # 7) Aggregations (ticker-level, per 1% move)
+        call_oi = float(opt_df.loc[opt_df["type"] == "call", "oi"].sum())
+        put_oi = float(opt_df.loc[opt_df["type"] == "put", "oi"].sum())
+        total_oi = call_oi + put_oi
+        if total_oi == 0:
+            return None
+
+        net_gex = float(opt_df["gex_1pct"].sum())  # $M per 1% move
+        net_vex = float(opt_df["vex_1pct"].sum())  # $M per 1% move
+        put_call_ratio = (put_oi / call_oi) if call_oi > 0 else None
+
+        # 8) Company name (optional; 1 extra ping per ticker)
+        try:
+            info = tkr.info or {}
+            name = info.get("shortName", symbol)
+        except Exception:
+            name = symbol
+
+        return {
+            "Ticker": symbol,
+            "Name": name,
+            "Call_OI": call_oi,
+            "Put_OI": put_oi,
+            "Total_OI": total_oi,
+            "PutCall": put_call_ratio,
+            "GEX_M": net_gex,  # $M per 1% move
+            "VEX_M": net_vex,  # $M per 1% move
+        }
+
+    except Exception:
+        return None
+
+# ------------------------------------------------------
+# 4. Scatter: VEX vs GEX, bubble size = total contracts
+# ------------------------------------------------------
+def vex_vs_gex_scatter(df: pd.DataFrame):
+    fig = px.scatter(
+        df,
+        x="GEX_M",
+        y="VEX_M",
+        size="Total_OI",
+        hover_name="Ticker",
+        hover_data={
+            "Name": True,
+            "Call_OI": ":,.0f",
+            "Put_OI": ":,.0f",
+            "Total_OI": ":,.0f",
+            "PutCall": ".2f",
+        },
+        labels={
+            "GEX_M": "Net GEX ($M per 1% move)",
+            "VEX_M": "Net VEX ($M per 1% move)",
+        },
+    )
+    fig.update_layout(
+        xaxis_title="Net GEX ($M per 1% move)",
+        yaxis_title="Net VEX ($M per 1% move)",
+        legend_title="",
+    )
+    return fig
+
+# ------------------------------------------------------
+# 5. UI wiring
+#    - No main title
+#    - Report active ticker
+#    - Simple dataframe (no Styler, no matplotlib)
+#    - 2-column layout: left = table, right = Plotly scatter
+# ------------------------------------------------------
+if not SP100_TICKERS:
+    st.warning(
+        "No tickers found in SP100_TICKERS / metadata. Please verify the metadata file and ticker slice."
+    )
+else:
+    run_btn = st.sidebar.button("Run SP100 GEX/VEX Screener")
+
+    if run_btn:
+        universe = tuple(sorted(set(SP100_TICKERS)))
+        n = len(universe)
+
+        status = st.empty()  # Shows actively processed ticker
+
+        with st.spinner("Running GEX/VEX screener on nearest expirations..."):
+            results = []
+            for i, symbol in enumerate(universe, start=1):
+                # Report which ticker is actively being processed
+                status.write(f"Processing {symbol} ({i}/{n})")
+                row = compute_ticker_gex_vex(symbol)
+                if row is not None:
+                    results.append(row)
+
+        status.write("Processing complete.")
+
+        if not results:
+            st.warning("No options data returned for the current universe.")
+        else:
+            screener_df = (
+                pd.DataFrame(results)
+                .sort_values("GEX_M", ascending=False)
+                .reset_index(drop=True)
+            )
+
+            # Prepare a cleaner display table
+            display_df = screener_df.copy()
+            display_df["Put/Call"] = display_df["PutCall"]
+            display_df["GEX ($M per 1% move)"] = display_df["GEX_M"]
+            display_df["VEX ($M per 1% move)"] = display_df["VEX_M"]
+            display_df = display_df[
+                [
+                    "Ticker",
+                    "Name",
+                    "Call_OI",
+                    "Put_OI",
+                    "Total_OI",
+                    "Put/Call",
+                    "GEX ($M per 1% move)",
+                    "VEX ($M per 1% move)",
+                ]
+            ]
+
+            # 2-column layout: left = dataframe, right = scatter plot
+            col1, col2 = st.columns(2, gap="medium")
+
+            with col1:
+                st.subheader("Ticker-level GEX/VEX (Nearest Expiration, per 1% move)")
+                st.dataframe(display_df, use_container_width=True)
+
+            with col2:
+                st.subheader("VEX vs GEX (bubble size = total contracts)")
+                fig = vex_vs_gex_scatter(screener_df)
+                st.plotly_chart(fig, use_container_width=True)
