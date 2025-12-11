@@ -79,8 +79,15 @@ def get_options_chain(_ticker, expirations):
 
     
 # Compute second-order greeks --- Gamma and Vanna
-sr1_close = yf.Ticker('SR1=F').info['previousClose']  # Uses SR3 futures as an estimate for risk free rate
-r = (100 - sr1_close) / 100
+# Uses SR1 futures as an estimate for the risk-free rate, with a safe fallback
+try:
+    sr1_close = yf.Ticker("SR1=F").info.get("previousClose", None)
+    if sr1_close is None:
+        raise ValueError("No previousClose in SR1=F.info")
+    r = (100 - sr1_close) / 100
+except Exception:
+    # Fallback if futures info fails
+    r = 0.05
 
 def compute_gamma(row, S, r):
     try:
@@ -136,9 +143,16 @@ if symbol and selected_expirations:
 # Only run if gamma column exists
 try: 
     # Step 1a: Calculate GEX
-    options_df["gex"] = (options_df["gamma"] * options_df["oi"] * 100 * underlying_price *
-                         options_df["type"].map({"call": 1, "put": -1})) # map({"call": 1, "put": -1}) adds directionality
-    options_df["gex"] = options_df["gex"] / 1000000 
+    # First compute GEX in $M per $1 move of the underlying
+    direction = options_df["type"].map({"call": 1, "put": -1})  # adds call/put directionality
+    options_df["gex_per_$1"] = (
+        options_df["gamma"] * options_df["oi"] * 100 * underlying_price * direction
+    ) / 1_000_000.0
+
+    # Then normalize to $M per 1% move of the underlying (to match the SP100 screener)
+    one_pct_move = 0.01 * underlying_price
+    options_df["gex"] = options_df["gex_per_$1"] * one_pct_move
+
     gex_agg = options_df.groupby("strike")[["gex"]].sum().reset_index()
     gex_agg = gex_agg.sort_values("strike", ascending=True)
     call_gex = options_df.loc[options_df["type"] == "call", "gex"].sum()
@@ -154,7 +168,14 @@ try:
     zero_gamma_strike = cumulative.loc[zero_cross_idx, "strike"]
 
     # Step 1b: Calculate VEX
-    options_df["vex"] = (options_df["vanna"] * options_df["oi"] * 100 * underlying_price) / 1000000
+    # First compute VEX in $M per $1 move of the underlying
+    options_df["vex_per_$1"] = (
+        options_df["vanna"] * options_df["oi"] * 100 * underlying_price
+    ) / 1_000_000.0
+
+    # Then normalize to $M per 1% move of the underlying (to match the SP100 screener)
+    options_df["vex"] = options_df["vex_per_$1"] * one_pct_move
+
     vex_agg = options_df.groupby("strike")[["oi", "vex"]].sum().reset_index()
     vex_agg = vex_agg.sort_values("strike", ascending=True)
     call_vex = options_df.loc[options_df["type"] == "call", "vex"].sum()
@@ -171,8 +192,8 @@ try:
     if isinstance(price_data.columns, pd.MultiIndex):
         price_data = price_data.xs(symbol, axis=1, level=1)
 
-    st.sidebar.metric('Net Gamma Exposure', value=f'${round(net_gex,2)} M')
-    st.sidebar.metric('Net Vanna Exposure', value=f'${round(net_vex,2)} M')
+    st.sidebar.metric('Net Gamma Exposure ($M per 1% move)', value=f'${round(net_gex, 2)} M')
+    st.sidebar.metric('Net Vanna Exposure ($M per 1% move)', value=f'${round(net_vex, 2)} M')
 except:
     st.warning("Unable to calculate options greeks.")
 
@@ -254,8 +275,8 @@ try:
     fig.update_yaxes(title_text="Strike", range=[y_min, y_max], side="right", row=1, col=3)
 
     
-    fig.update_xaxes(title_text="Gamma Exposure ($M)", row=1, col=2)
-    fig.update_xaxes(title_text="Vanna Exposure ($M)", row=1, col=3)
+    fig.update_xaxes(title_text="Gamma Exposure ($M per 1% move)", row=1, col=2)
+    fig.update_xaxes(title_text="Vanna Exposure ($M per 1% move)", row=1, col=3)
     
     # Horizontal lines for current price and zero gamma strike
     for col in [2, 3]:
